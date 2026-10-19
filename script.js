@@ -15,14 +15,6 @@ let pendingCheckout=false;
 let activityLog=JSON.parse(localStorage.getItem("infinix-activity-log")||"[]");
 let plusMembers=JSON.parse(localStorage.getItem("infinix-plus-members")||"{}");
 let membershipRequests=JSON.parse(localStorage.getItem("infinix-plus-requests")||"[]");
-const registeredCustomerIds=new Set(accounts.filter(account=>account.role==="customer").flatMap(account=>[account.username,account.email]).filter(Boolean).map(value=>String(value).trim().toLowerCase()));
-const registeredAccountIds=new Set(accounts.flatMap(account=>[account.username,account.email]).filter(Boolean).map(value=>String(value).trim().toLowerCase()));
-let membershipDataChanged=false;
-Object.keys(plusMembers).forEach(key=>{if(!registeredCustomerIds.has(String(key).trim().toLowerCase())){delete plusMembers[key];membershipDataChanged=true}});
-const liveRequests=membershipRequests.filter(request=>registeredCustomerIds.has(String(request.username||"").trim().toLowerCase())||registeredCustomerIds.has(String(request.email||"").trim().toLowerCase()));
-if(liveRequests.length!==membershipRequests.length){membershipRequests=liveRequests;membershipDataChanged=true}
-if(membershipDataChanged){localStorage.setItem("infinix-plus-members",JSON.stringify(plusMembers));localStorage.setItem("infinix-plus-requests",JSON.stringify(membershipRequests))}
-if(currentUser&&currentUser.role!=="admin"&&!registeredAccountIds.has(String(currentUser.username||currentUser.email||"").trim().toLowerCase())&&!registeredAccountIds.has(String(currentUser.email||"").trim().toLowerCase())){currentUser=null;currentRole="customer";localStorage.removeItem("infinix-user");localStorage.setItem("infinix-role","customer")}
 let plusPlanPrices=JSON.parse(localStorage.getItem("infinix-plus-plan-prices")||"null")||{monthly:300,quarterly:475,yearly:750};
 if(!localStorage.getItem("infinix-plus-plan-prices"))localStorage.setItem("infinix-plus-plan-prices",JSON.stringify(plusPlanPrices));
 let selectedPlusPlan="monthly";
@@ -98,7 +90,7 @@ function logActivity(action,details){activityLog.unshift({id:Date.now()+Math.ran
 function isPlusMember(user=currentUser){const key=String(user&&(user.username||user.email)||"").toLowerCase(),membership=key&&plusMembers[key];if(!membership)return false;if(membership===true)return true;return !membership.expiresAt||new Date(membership.expiresAt).getTime()>Date.now()}
 function plusPlanLabel(plan){return plan==="yearly"?"Yearly":plan==="quarterly"?"Quarterly":"Monthly"}
 function plusPlanExpiry(plan,from=new Date()){const days=plan==="yearly"?365:plan==="quarterly"?90:30;return new Date(from.getTime()+days*24*60*60*1000)}
-function escapeAdminText(value){return String(value??"").replace(/[&<>\"']/g,char=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[char]))}
+function escapeAdminText(value){return String(value??"").replace(/[&<>"']/g,char=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[char]))}
 function updateDeliveryLocation(){deliveryLocation={...defaultLocations.IN,...(deliveryLocations.IN||{})};document.getElementById("deliveryAddress").textContent=[deliveryLocation.city,deliveryLocation.state,deliveryLocation.postal].filter(Boolean).join(" ");document.getElementById("freeDeliveryText").textContent=isPlusMember()?"Infinix Plus members get free delivery on every order":"Free delivery on orders of "+moneyWhole(499)+" or more"}
 function fillCheckoutAddress(){const form=document.getElementById("checkoutForm");["street","landmark","city","state","postal"].forEach(key=>{form.elements[key].value=deliveryLocation[key]||""})}
 function applyCountry(){country="IN";localStorage.setItem("infinix-country","IN");updateDeliveryLocation();renderProducts();renderCart()}
@@ -107,70 +99,46 @@ function renderDashboard(){const box=document.getElementById("dashboardContent")
 
 document.getElementById("locationBtn").addEventListener("click",()=>{updateDeliveryLocation();document.getElementById("locationCountryLabel").textContent="Selected country: "+countryNames.of(country);document.getElementById("locationStreet").value=deliveryLocation.street||"";document.getElementById("locationCity").value=deliveryLocation.city||"";document.getElementById("locationState").value=deliveryLocation.state||"";document.getElementById("locationLandmark").value=deliveryLocation.landmark||"";document.getElementById("locationPostal").value=deliveryLocation.postal||"";openPanel(document.getElementById("locationModal"))});
 document.getElementById("locationForm").addEventListener("submit",e=>{e.preventDefault();deliveryLocations[country]={street:document.getElementById("locationStreet").value.trim(),city:document.getElementById("locationCity").value.trim(),state:document.getElementById("locationState").value.trim(),landmark:document.getElementById("locationLandmark").value.trim(),postal:document.getElementById("locationPostal").value.trim()};localStorage.setItem("infinix-delivery-locations",JSON.stringify(deliveryLocations));updateDeliveryLocation();logActivity("Delivery address updated",[deliveryLocations[country].city,deliveryLocations[country].state,deliveryLocations[country].postal].join(", "));closePanels();toast("Delivery address updated");if(pendingCheckout){pendingCheckout=false;fillCheckoutAddress();openPanel(document.getElementById("checkoutModal"))}});
-document.getElementById("authForm").onsubmit=e=>{e.preventDefault();const data=new FormData(e.target),creating=!document.getElementById("nameField").classList.contains("hidden"),requested=authRoleOverride||(document.getElementById("authRoleField").classList.contains("hidden")?(currentRole==="admin"?"shopkeeper":currentRole):document.getElementById("authRole").value),password=data.get("password");let account=null,role=requested,name="";if(creating){const username=(data.get("username")||"").trim(),email=(data.get("email")||"").trim().toLowerCase();name=(data.get("name")||username).trim();if(accounts.some(a=>a.username.toLowerCase()===username.toLowerCase()||a.email===email)){toast("That username or email is already registered");return}if(requested==="shopkeeper"&&username.toUpperCase()==="TRRGREAT"&&password==="TRONTOP"){role="admin";name=name||"TRRGREAT"}else{account={username,email,password,name,role:requested};accounts.push(account);localStorage.setItem("infinix-accounts",JSON.stringify(accounts))}}else{const identifier=(data.get("identifier")||"").trim();if(identifier.toUpperCase()==="TRRGREAT"){if(password!=="TRONTOP"){logActivity("Sign-in failed","Invalid username or password");toast("Invalid password or username");return}role="admin";name="TRRGREAT"}else{account=accounts.find(a=>a.username.toLowerCase()===identifier.toLowerCase()||a.email.toLowerCase()===identifier.toLowerCase());if(!account){logActivity("Sign-in failed","Invalid username or password");toast("Invalid password or username");return}if(account.password!==password){toast("Invalid password or username");return}role=account.role;name=account.name;}}const email=account?account.email:(data.get("email")||"");const username=account?account.username:(creating?data.get("username"):"TRRGREAT");currentUser={email,username,name,role};logActivity(creating?"Account created":"User signed in",name+" · "+role);localStorage.setItem("infinix-user",JSON.stringify(currentUser));document.getElementById("helloText").textContent="Hello, "+name;document.getElementById("logoutBtn").classList.remove("hidden");authRoleOverride=null;closePanels();switchRole(role);toast("Welcome to Infinix Shopee, "+name+"!");e.target.reset()};
 document.querySelectorAll("[data-auth]").forEach(b=>b.addEventListener("click",()=>{const creating=b.dataset.auth==="create",role=authRoleOverride||document.getElementById("authRole").value;document.getElementById("authRoleField").classList.toggle("hidden",!creating);document.getElementById("identifierField").classList.toggle("hidden",creating);document.getElementById("usernameField").classList.toggle("hidden",!creating);document.getElementById("emailField").classList.toggle("hidden",!creating);document.getElementById("nameField").classList.toggle("hidden",!creating);document.getElementById("identifierField").querySelector("input").required=!creating;document.getElementById("usernameField").querySelector("input").required=creating;document.getElementById("emailField").querySelector("input").required=creating;document.getElementById("nameField").querySelector("input").required=creating;document.getElementById("authTitle").textContent=creating?"Create your account.":"Good to see you.";document.getElementById("authSub").textContent=creating?"Choose a username and add your email to create an account.":"Sign in with your username or email."}));
 document.getElementById("accountBtn").addEventListener("click",()=>{if(currentUser)return;authRoleOverride=null;document.querySelector('[data-auth="signin"]').click();document.getElementById("authRoleField").classList.add("hidden");document.getElementById("identifierField").querySelector("input").required=true;document.getElementById("usernameField").querySelector("input").required=false;document.getElementById("emailField").querySelector("input").required=false;document.getElementById("nameField").querySelector("input").required=false});
 if(currentUser){document.getElementById("helloText").textContent="Hello, "+(currentUser.name||currentUser.username);document.getElementById("accountLabel").textContent="Your account";document.getElementById("logoutBtn").classList.remove("hidden")}
-document.getElementById("logoutBtn").addEventListener("click",()=>{logActivity("User signed out",activityActor());currentUser=null;authRoleOverride=null;localStorage.removeItem("infinix-user");document.getElementById("helloText").textContent="Hello, sign in";document.getElementById("accountLabel").textContent="Sign in / Create account";document.getElementById("logoutBtn").classList.add("hidden");closePanels();switchRole("customer");toast("You have been logged out")});
+document.getElementById("logoutBtn").addEventListener("click",async()=>{try{await fetch("/api/logout",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:"{}"})}catch{}window.__infinixSession=false;localStorage.removeItem("infinix-user");localStorage.removeItem("infinix-role");location.reload()});
 function setTheme(theme){const dark=theme==="dark";document.body.classList.toggle("dark-theme",dark);localStorage.setItem("infinix-theme",dark?"dark":"light");const button=document.getElementById("themeToggle");button.innerHTML=dark?'☀ <span>Theme: Light</span>':'☾ <span>Theme: Dark</span>';button.setAttribute("aria-label",dark?"Switch to light theme":"Switch to dark theme")}
 document.getElementById("themeToggle").addEventListener("click",()=>setTheme(document.body.classList.contains("dark-theme")?"light":"dark"));
 setTheme(localStorage.getItem("infinix-theme")||"light");
 applyCountry();switchRole(currentRole);
 
-// Keep sign-in resilient when older browser-saved accounts have incomplete fields.
-accounts=accounts.filter(a=>a&&typeof a==="object");
-document.getElementById("authForm").onsubmit=e=>{
+// Sign-in and account creation are verified by the Python server.
+document.getElementById("authForm").onsubmit=async e=>{
   e.preventDefault();
-  const data=new FormData(e.target);
-  const creating=!document.getElementById("nameField").classList.contains("hidden");
-  const requested=authRoleOverride||(document.getElementById("authRoleField").classList.contains("hidden")?(currentRole==="admin"?"shopkeeper":currentRole):document.getElementById("authRole").value);
+  const data=new FormData(e.target),creating=!document.getElementById("nameField").classList.contains("hidden");
+  const requested=authRoleOverride||(document.getElementById("authRoleField").classList.contains("hidden")?"customer":document.getElementById("authRole").value);
   const password=String(data.get("password")||"");
-  let account=null,role=requested,name="",email="",username="";
-
-  if(creating){
-    username=String(data.get("username")||"").trim();
-    email=String(data.get("email")||"").trim().toLowerCase();
-    name=String(data.get("name")||username).trim();
-    const adminSignup=requested==="shopkeeper"&&username.toUpperCase()==="TRRGREAT";
-    if(!username||!password||(!adminSignup&&(!email||!name))){toast("Please fill in all required fields");return}
-    if(adminSignup&&password!=="TRONTOP"){toast("Invalid password or username");return}
-    const duplicate=accounts.some(a=>String(a.username||"").toLowerCase()===username.toLowerCase()||(email&&String(a.email||"").toLowerCase()===email));
-    if(duplicate){toast("That username or email is already registered");return}
-    if(adminSignup){
-      role="admin";name=name||"TRRGREAT";
-    }else{
-      account={username,email,password,name,role:requested};
-      accounts.push(account);
-      localStorage.setItem("infinix-accounts",JSON.stringify(accounts));
+  const payload=creating
+    ?{username:String(data.get("username")||"").trim(),email:String(data.get("email")||"").trim().toLowerCase(),name:String(data.get("name")||"").trim(),password,role:requested}
+    :{identifier:String(data.get("identifier")||"").trim(),password};
+  try{
+    let response=await fetch(creating?"/api/register":"/api/login",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
+    let result=await response.json();
+    // One-time migration for accounts that only existed in this browser.
+    if(!creating&&!response.ok){
+      const legacy=accounts.find(account=>{const id=String(account.username||account.email||"").toLowerCase();return (id===payload.identifier.toLowerCase()||String(account.email||"").toLowerCase()===payload.identifier.toLowerCase())&&String(account.password||"")===password&&["customer","shopkeeper"].includes(account.role)});
+      if(legacy){
+        const migration={username:String(legacy.username||"").trim(),email:String(legacy.email||"").trim().toLowerCase(),name:String(legacy.name||legacy.username||"").trim(),password,role:legacy.role};
+        response=await fetch("/api/register",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify(migration)});
+        result=await response.json();
+        if(response.ok){accounts=accounts.filter(account=>account!==legacy);localStorage.setItem("infinix-accounts",JSON.stringify(accounts));}
+      }
     }
-  }else{
-    const identifier=String(data.get("identifier")||"").trim();
-    if(identifier.toUpperCase()==="TRRGREAT"){
-      
-      if(password!=="TRONTOP"){logActivity("Sign-in failed","Invalid username or password");toast("Invalid password or username");return}
-      role="admin";name="TRRGREAT";username="TRRGREAT";
-    }else{
-      account=accounts.find(a=>String(a.username||"").toLowerCase()===identifier.toLowerCase()||String(a.email||"").toLowerCase()===identifier.toLowerCase());
-      if(!account){logActivity("Sign-in failed","Invalid username or password");toast("Invalid password or username");return}
-      if(String(account.password||"")!==password){logActivity("Sign-in failed","Invalid username or password");toast("Invalid password or username");return}
-      
-      role=account.role;name=String(account.name||account.username||"Shopper");username=String(account.username||"");email=String(account.email||"");
-    }
-  }
-
-  if(account){username=String(account.username||username);email=String(account.email||email)}
-  currentUser={email,username,name,role};logActivity(creating?"Account created":"User signed in",name+" · "+role);
-  localStorage.setItem("infinix-user",JSON.stringify(currentUser));
-  document.getElementById("helloText").textContent="Hello, "+name;
-  document.getElementById("accountLabel").textContent="Your account";
-  document.getElementById("logoutBtn").classList.remove("hidden");
-  authRoleOverride=null;
-  closePanels();
-  switchRole(role);
-  toast("Welcome to Infinix Shopee, "+name+"!");
-  e.target.reset();
+    if(!response.ok){toast(result.error||"Invalid username or password");return}
+    window.__infinixSession=true;
+    localStorage.setItem("infinix-user",JSON.stringify(result.user));
+    localStorage.setItem("infinix-role",result.user.role);
+    authRoleOverride=null;
+    e.target.reset();
+    location.reload();
+  }catch(error){toast("Could not reach the sign-in server. Please try again.")}
 };
-
 document.getElementById("expiryDate").addEventListener("input",e=>{
   const digits=e.target.value.replace(/\D/g,"").slice(0,4);
   e.target.value=digits.length>2?digits.slice(0,2)+" / "+digits.slice(2):digits.length===2?digits+" / ":digits;
@@ -188,7 +156,7 @@ function renderOrderConfirmation(order){
 function renderOrders(){
   const key=String(currentUser&&(currentUser.username||currentUser.email)||"").toLowerCase();
   const orders=orderHistory.filter(order=>String(order.customer||"").toLowerCase()===key);
-    const list=document.getElementById("ordersList");
+  const list=document.getElementById("ordersList");
   list.innerHTML=orders.length?orders.map(order=>'<article class="order-card"><div class="order-card-head"><b>Order #'+order.id+'</b><span>'+new Date(order.createdAt).toLocaleDateString()+'</span></div><div class="order-status">'+order.status+'</div><div class="order-items">'+order.items.map(item=>'<div>'+item.name+' <span>× '+item.quantity+'</span></div>').join("")+'</div><div class="order-card-total"><span>Total</span><b>'+new Intl.NumberFormat("en-"+country,{style:"currency",currency:order.currency||countryCurrency[country],maximumFractionDigits:2}).format(order.total)+'</b></div><small class="order-address">Delivering to: '+order.address+'</small></article>').join(""):'<div class="orders-empty"><b>No orders yet</b><p>Completed purchases will show up here.</p></div>';
 }
 document.getElementById("ordersBtn").onclick=()=>{
@@ -217,14 +185,17 @@ function renderAdminDashboard(){
     if(!confirm(`Remove “${product.name}” from the store?`))return;
     const removedFromCart=removeCartProduct(product,false);products=products.filter(item=>String(item.id)!==button.dataset.adminProduct);localStorage.setItem("infinix-products",JSON.stringify(products));logActivity("Product removed by admin",product.name);renderProducts();renderAdminDashboard();toast(removedFromCart?"Product removed. It was also removed from your cart.":"Product removed");
   });
-  box.querySelectorAll("[data-admin-user]").forEach(button=>button.onclick=()=>{
-    const username=button.dataset.adminUser;const account=accounts.find(item=>String(item.username||"")===username);if(!account)return;
+  box.querySelectorAll("[data-admin-user]").forEach(button=>button.onclick=async()=>{
+    const username=button.dataset.adminUser,account=accounts.find(item=>String(item.username||"")===username);if(!account)return;
     if(!confirm(`Remove the account “${account.username}”? Any products owned by this seller will also be removed. Existing order records will be retained.`))return;
-    const accountKeys=[account.username,account.email].filter(Boolean).map(value=>String(value).trim().toLowerCase());const key=accountKeys[0]||"";accounts=accounts.filter(item=>item!==account);localStorage.setItem("infinix-accounts",JSON.stringify(accounts));
-    let cartItemsRemoved=0;if(account.role==="shopkeeper"){const sellerProducts=products.filter(product=>String(product.seller||"").toLowerCase()===key);sellerProducts.forEach(product=>{if(removeCartProduct(product,false))cartItemsRemoved++});products=products.filter(product=>String(product.seller||"").toLowerCase()!==key);localStorage.setItem("infinix-products",JSON.stringify(products))}
-    accountKeys.forEach(identifier=>delete plusMembers[identifier]);membershipRequests=membershipRequests.filter(request=>![request.username,request.email].filter(Boolean).some(identifier=>accountKeys.includes(String(identifier).trim().toLowerCase())));localStorage.setItem("infinix-plus-members",JSON.stringify(plusMembers));localStorage.setItem("infinix-plus-requests",JSON.stringify(membershipRequests));logActivity("User removed by admin",`${account.username} · ${account.role||"customer"} · membership data cleared`);renderProducts();renderAdminDashboard();toast(cartItemsRemoved?"User removed. Their products were removed from the cart.":"User account and membership removed");
-  });
-  box.querySelectorAll("[data-admin-order]").forEach(button=>button.onclick=()=>{
+    try{
+      const response=await fetch("/api/users/delete",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({username})});
+      const result=await response.json();if(!response.ok)throw new Error(result.error||"Could not remove user");
+      const accountKeys=[account.username,account.email].filter(Boolean).map(value=>String(value).trim().toLowerCase());const key=accountKeys[0]||"";accounts=accounts.filter(item=>item.username!==account.username);
+      let cartItemsRemoved=0;if(account.role==="shopkeeper"){const sellerProducts=products.filter(product=>String(product.seller||"").toLowerCase()===key);sellerProducts.forEach(product=>{if(removeCartProduct(product,false))cartItemsRemoved++});products=products.filter(product=>String(product.seller||"").toLowerCase()!==key);localStorage.setItem("infinix-products",JSON.stringify(products))}
+      accountKeys.forEach(identifier=>delete plusMembers[identifier]);membershipRequests=membershipRequests.filter(request=>![request.username,request.email].filter(Boolean).some(identifier=>accountKeys.includes(String(identifier).trim().toLowerCase())));localStorage.setItem("infinix-plus-members",JSON.stringify(plusMembers));localStorage.setItem("infinix-plus-requests",JSON.stringify(membershipRequests));logActivity("User removed by admin",`${account.username} · ${account.role||"customer"} · membership data cleared`);renderProducts();renderAdminDashboard();toast(cartItemsRemoved?"User removed. Their products were removed from the cart.":"User account and membership removed");
+    }catch(error){toast(error.message||"Could not remove user")}
+  });  box.querySelectorAll("[data-admin-order]").forEach(button=>button.onclick=()=>{
     const order=orderHistory.find(item=>String(item.id)===button.dataset.adminOrder);if(!order)return;
     order.status=order.status==="Processing"?"Out for delivery":order.status==="Out for delivery"?"Delivered":"Processing";if(order.status==="Delivered"&&order.deliveryApproval?.status==="Pending"){order.deliveryApproval.status="Approved";order.deliveryApproval.reviewedAt=new Date().toISOString();order.deliveryApproval.reviewedBy=activityActor()}localStorage.setItem("infinix-orders",JSON.stringify(orderHistory));logActivity("Order status changed by admin",`Order #${order.id} · ${order.status}`);renderAdminDashboard();toast("Order status updated");
   });
@@ -306,10 +277,9 @@ document.getElementById("authForm").addEventListener("reset",()=>{
 function updateSignupFieldRequirements(){
   const creating=!document.getElementById("nameField").classList.contains("hidden");
   document.getElementById("authRole").required=creating;
-  const adminSignup=creating&&document.getElementById("authRole").value==="shopkeeper"&&document.querySelector('#usernameField input').value.trim().toUpperCase()==="TRRGREAT";
   document.querySelector('#usernameField input').required=creating;
-  document.querySelector('#emailField input').required=creating&&!adminSignup;
-  document.querySelector('#nameField input').required=creating&&!adminSignup;
+  document.querySelector('#emailField input').required=creating;
+  document.querySelector('#nameField input').required=creating;
 }
 document.querySelector('#usernameField input').addEventListener("input",updateSignupFieldRequirements);
 document.getElementById("authRole").addEventListener("change",updateSignupFieldRequirements);
