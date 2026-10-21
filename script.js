@@ -26,8 +26,10 @@ let vouchers=JSON.parse(localStorage.getItem("infinix-vouchers")||"[]"),appliedV
 if(currentRole!=="customer"&&(!currentUser||currentUser.role!==currentRole))currentRole="customer";
 let authRoleOverride=null;
 const grid=document.getElementById("productGrid");
+
 function money(n){const currency=countryCurrency[country]||"INR";let locale="en-IN";try{locale="en-"+country;return new Intl.NumberFormat(locale,{style:"currency",currency,maximumFractionDigits:2}).format(Number(n))}catch{return new Intl.NumberFormat("en-IN",{style:"currency",currency,maximumFractionDigits:2}).format(Number(n))}}
 function moneyWhole(n){const currency=countryCurrency[country]||"INR";let locale="en-IN";try{locale="en-"+country;return new Intl.NumberFormat(locale,{style:"currency",currency,maximumFractionDigits:0}).format(Number(n))}catch{return new Intl.NumberFormat("en-IN",{style:"currency",currency,maximumFractionDigits:0}).format(Number(n))}}
+
 const selectedSpecs={category:"all",brand:"",size:"",color:"",material:"",availability:"",sort:""};
 function productSpec(product,key){
   const direct=product&&product[key];
@@ -88,11 +90,8 @@ function renderBargainChat(){const list=document.getElementById("bargainMessages
 function bargainReply(text){
   const requested=text.match(/(\d+(?:\.\d+)?)\s*%/),more=/\b(more|better|increase|higher|another|again)\b/i.test(text),decline=/\b(no|cancel|remove|stop|clear)\b/i.test(text);
   if(decline){bargainState.offer=0;bargainState.applied=0;bargainState.messages.push({by:"bot",text:"No problem. I’ve removed the bargaining discount."});return}
-  if(requested){const amount=Number(requested[1]);if(amount>=2&&amount<=6){const requestedOffer=amount/2;bargainState.offer=Math.max(requestedOffer,Number(bargainState.applied)||0);bargainState.messages.push({by:"bot",text:bargainState.offer>requestedOffer?`Your existing ${bargainState.offer}% deal is better than half of the ${amount}% you requested. You can keep it.`:`You asked for ${amount}% off. I can offer half: ${bargainState.offer}% off this cart.`});return}if(amount>6){bargainState.offer=Math.max(3,Number(bargainState.applied)||0);bargainState.messages.push({by:"bot",text:bargainState.offer>3?`I can’t go above 6%; your existing ${bargainState.offer}% offer is better than half of the 6% maximum.`:"I can’t go above 6%. As requested, I can offer half of the 6% maximum: 3% off."});return}bargainState.offer=1;bargainState.messages.push({by:"bot",text:`I can offer half of ${amount}%: ${bargainState.offer}% off.`});return}
-  if(more||bargainState.offer||bargainState.applied){const current=Math.max(Number(bargainState.offer)||0,Number(bargainState.applied)||0),next=[2,4,6].find(value=>value>current);if(next){bargainState.offer=next;bargainState.messages.push({by:"bot",text:`I’ve improved the offer to ${next}% off. That’s the best I can do after this.`});}else{bargainState.offer=6;bargainState.messages.push({by:"bot",text:"6% is my maximum discount for this cart."})}return}
-  bargainState.offer=2;bargainState.messages.push({by:"bot",text:"I can offer 2% off to start. Ask for more if you’d like to keep bargaining."});
-}
-function saveCart(){localStorage.setItem("shoply-cart",JSON.stringify(cart));resetBargainForCart();renderCart()}
+  if(requested){const amount=Number(requested[1]);if(amount>=2&&amount<=6){const requestedOffer=amount/2;bargainState.offer=Math.max(requestedOffer,Number(bargainState.applied)||0);bargainState.messages.push({by:"bot",text:bargainState.offer>requestedOffer?`Your existing ${bargainState.offer}% deal is better than half of the ${amount}% you requested. You can keep it.`:`You asked for ${amount}% off. I can offer half: ${bargainState.offer}% off this cart.`});return}if(amount>6){bargainState.offer=Math.max(3,Number(bargainState.applied)||0);bargainState.messages.push({by:"bot",text:bargainState.offer>3?`I can’t go above 6%; your existing ${bargainState.offer}% offer is better than half of the 6% maximum.`:"I can’t go above 6%. As requested, I can offer half of the 6% maximum: 3% off."});return}}
+  function saveCart(){localStorage.setItem("shoply-cart",JSON.stringify(cart));resetBargainForCart();renderCart()}
 function renderCart(){
   const ids=Object.keys(cart).map(Number).filter(id=>products.some(p=>p.id===id&&!productStock(p)));
   const count=ids.reduce((sum,id)=>sum+(Number(cart[id])||0),0);
@@ -121,358 +120,482 @@ function renderCart(){
   const box=document.getElementById("cartItems");
   box.innerHTML=ids.length?ids.map(id=>{const p=products.find(item=>item.id===id),quantity=Math.max(1,Number(cart[id])||1),stock=Number(p.quantity),atStockLimit=Number.isFinite(stock)&&quantity>=stock;return '<div class="cart-item"><img src="'+p.image+'" alt=""><div class="cart-item-info"><b>'+p.name+'</b><small>'+p.category+'</small><div class="cart-item-bottom"><div class="qty" aria-label="Quantity controls"><button type="button" data-qty="'+id+'" data-change="-1" aria-label="Decrease quantity or remove item" title="Decrease quantity">−</button><span aria-live="polite">'+quantity+'</span><button type="button" data-qty="'+id+'" data-change="1" aria-label="Increase quantity" title="Increase quantity" '+(atStockLimit?'disabled aria-disabled="true"':'')+'>+</button></div><b>'+money(p.price*quantity)+'</b></div></div><button class="remove" data-remove="'+id+'">Remove</button></div>'}).join(''):'<div class="empty-cart"><div>♡</div><b>Your cart is taking a little break.</b><p>Add something lovely to get started.</p></div>';
 }
-function toast(msg){let t=document.getElementById("toast");t.textContent=msg;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2200)}
+function toast(msg){const t=document.getElementById("toast");if(!t)return;t.textContent=msg;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2200)}
 function openPanel(el){document.getElementById("overlay").classList.add("open");el.classList.add("open")}
 function closePanels(){document.getElementById("overlay").classList.remove("open");document.querySelectorAll(".drawer,.modal").forEach(x=>x.classList.remove("open"));stopVisualCamera();clearTryOnPhoto()}
-renderProducts();renderCart();
-grid.addEventListener("click",e=>{let a=e.target.closest("[data-add]"),h=e.target.closest("[data-wish]");if(a){let id=a.dataset.add,product=products.find(p=>String(p.id)===String(id));if(!product||productStock(product)){toast("This product is out of stock");return}if(Number.isFinite(Number(product.quantity))&&(cart[id]||0)>=Number(product.quantity)){toast("That is all the available stock");return}cart[id]=(cart[id]||0)+1;saveCart();logActivity("Product added to cart",product.name);toast("Added to your cart — nice choice!")}if(h){let id=Number(h.dataset.wish);wish=wish.includes(id)?wish.filter(x=>x!==id):[...wish,id];localStorage.setItem("shoply-wish",JSON.stringify(wish));logActivity(wish.includes(id)?"Product added to wishlist":"Product removed from wishlist",products.find(p=>p.id===id)?.name||"Product");renderProducts();toast(wish.includes(id)?"Saved to your wishlist":"Removed from your wishlist")}});
-document.getElementById("cartItems").addEventListener("click",e=>{let q=e.target.closest("[data-qty]"),r=e.target.closest("[data-remove]");if(q){let id=q.dataset.qty,next=(Number(cart[id])||0)+Number(q.dataset.change),product=products.find(item=>String(item.id)===String(id));if(next<=0)delete cart[id];else if(!product||productStock(product)){delete cart[id];toast("This product is no longer available and was removed from your cart")}else if(Number.isFinite(Number(product.quantity))&&next>Number(product.quantity)){toast("That is all the available stock");return}else cart[id]=next;saveCart()}if(r){delete cart[r.dataset.remove];saveCart()}});
-document.querySelectorAll(".filter").forEach(b=>b.onclick=()=>{document.querySelectorAll(".filter").forEach(x=>x.classList.remove("active"));b.classList.add("active");activeFilter=b.dataset.filter;selectedSpecs.category=activeFilter;visibleCount=8;renderProducts()});
-const categoryDetails={Tech:{title:"Tech & gadgets",description:"Discover electronics and smart everyday picks listed by our sellers."},Home:{title:"Home & living",description:"Browse seller-listed pieces for your home, comfort, and daily routines."},Fashion:{title:"Fashion finds",description:"Explore clothing and accessories from Infinix Shopee sellers."},Beauty:{title:"Beauty & care",description:"Shop beauty and personal-care finds listed by our sellers."},Other:{title:"Other finds",description:"Explore more products listed by Infinix Shopee sellers."}};
-function openCategory(category){const key=Object.keys(categoryDetails).find(name=>name.toLowerCase()===String(category||"").toLowerCase());if(!key)return;activeFilter=key;Object.keys(selectedSpecs).forEach(name=>selectedSpecs[name]="");selectedSpecs.category=key;searchTerm="";document.getElementById("productSearch").value="";document.getElementById("searchInput").value="";categoryBrowseMode=true;document.querySelector(`[data-product-filter="category"]`).closest("label").classList.add("hidden");document.body.classList.add("category-browse-mode");const header=document.getElementById("categoryBrowseHeader"),details=categoryDetails[key];header.classList.remove("hidden");document.getElementById("categoryBrowseTitle").textContent=details.title;document.getElementById("categoryBrowseDescription").textContent=details.description;document.querySelectorAll(".filter").forEach(button=>button.classList.toggle("active",button.dataset.filter===key));renderProducts();document.getElementById("popular").scrollIntoView({behavior:"smooth",block:"start"})}
-function closeCategory(){categoryBrowseMode=false;document.body.classList.remove("category-browse-mode");document.getElementById("categoryBrowseHeader").classList.add("hidden");document.querySelector(`[data-product-filter="category"]`).closest("label").classList.remove("hidden");activeFilter="all";selectedSpecs.category="all";searchTerm="";document.getElementById("productSearch").value="";document.getElementById("searchInput").value="";renderProducts();document.getElementById("home").scrollIntoView({behavior:"smooth",block:"start"})}
-document.querySelectorAll(".category-card").forEach(button=>button.addEventListener("click",()=>openCategory(button.dataset.cat)));
-document.getElementById("backToStore").addEventListener("click",closeCategory);
-document.querySelectorAll(".nav a").forEach(link=>{const label=link.textContent.toLowerCase();const category=label.includes("home & living")?"Home":label.includes("electronics")||label.includes("tech")?"Tech":label.includes("fashion")?"Fashion":label.includes("beauty")?"Beauty":null;if(category)link.addEventListener("click",event=>{event.preventDefault();openCategory(category)})});
-function doSearch(source){let query=(source!==undefined?source:(document.getElementById("searchInput").value||document.getElementById("productSearch").value)).trim();searchTerm=query;activeFilter=categoryBrowseMode?activeFilter:"all";selectedSpecs.category=categoryBrowseMode?activeFilter:"all";document.getElementById("searchInput").value=query;document.getElementById("productSearch").value=query;visibleCount=12;renderProducts();document.getElementById("popular").scrollIntoView({behavior:"smooth"})}
-document.getElementById("searchBtn").onclick=()=>doSearch(document.getElementById("searchInput").value);document.getElementById("searchInput").addEventListener("keydown",e=>{if(e.key==="Enter")doSearch(e.target.value)});document.getElementById("productSearchBtn").onclick=()=>doSearch(document.getElementById("productSearch").value);document.getElementById("productSearch").addEventListener("keydown",e=>{if(e.key==="Enter")doSearch(e.target.value)});
-document.getElementById("showMore").onclick=()=>{visibleCount=12;renderProducts()};
-const filterToggle=document.getElementById("toggleProductFilters"),filterPanel=document.getElementById("productFilters");filterToggle.addEventListener("click",()=>{const open=filterPanel.classList.toggle("open");filterToggle.setAttribute("aria-expanded",String(open));filterToggle.classList.toggle("active",open)});
-document.getElementById("productFilters").addEventListener("change",event=>{const control=event.target.closest("[data-product-filter]");if(!control)return;selectedSpecs[control.dataset.productFilter]=control.value;if(control.dataset.productFilter==="category"){activeFilter=control.value;document.querySelectorAll(".filter").forEach(button=>button.classList.toggle("active",button.dataset.filter===activeFilter))}visibleCount=12;renderProducts()});document.getElementById("clearProductFilters").addEventListener("click",clearProductFilters);
-let tryOnPhotoUrl=null,tryOnProductId=null;
-function clearTryOnPhoto(){if(tryOnPhotoUrl){URL.revokeObjectURL(tryOnPhotoUrl);tryOnPhotoUrl=null}const photo=document.getElementById("tryOnPerson"),garment=document.getElementById("tryOnGarment"),placeholder=document.getElementById("tryOnPlaceholder");if(photo){photo.removeAttribute("src");photo.classList.add("hidden")}if(garment){garment.removeAttribute("src");garment.classList.add("hidden")}if(placeholder)placeholder.classList.remove("hidden");const input=document.getElementById("tryOnPhoto");if(input)input.value=""}
-function openTryOn(productId){const product=products.find(item=>String(item.id)===String(productId));if(!product||!isFashionProduct(product)){toast("Photo try-on is available for Fashion items only");return}if(currentRole!=="customer"){toast("Sign in as a customer to use photo try-on");return}tryOnProductId=String(product.id);const photo=document.getElementById("tryOnPerson"),garment=document.getElementById("tryOnGarment"),stage=document.getElementById("tryOnStage");clearTryOnPhoto();tryOnProductId=String(product.id);document.getElementById("tryOnProductName").textContent=product.name||"Fashion item";document.getElementById("tryOnProductPrice").textContent=money(product.price);const productImage=document.getElementById("tryOnProductImage");productImage.src=product.image||"";productImage.alt=product.name||"Fashion item";garment.src=product.image||"";garment.classList.remove("hidden");stage.style.setProperty("--tryon-scale","45%");stage.style.setProperty("--tryon-top","42%");document.getElementById("tryOnScale").value="45";document.getElementById("tryOnPosition").value="42";openPanel(document.getElementById("tryOnModal"))}
-grid.addEventListener("click",event=>{const button=event.target.closest("[data-tryon]");if(button)openTryOn(button.dataset.tryon)});
-document.getElementById("tryOnPhoto").addEventListener("change",event=>{const file=event.target.files&&event.target.files[0];if(!file)return;if(!file.type.startsWith("image/")){toast("Choose an image file for the try-on preview");event.target.value="";return}if(file.size>12*1024*1024){toast("Choose a photo smaller than 12 MB");event.target.value="";return}clearTryOnPhoto();tryOnPhotoUrl=URL.createObjectURL(file);const photo=document.getElementById("tryOnPerson");photo.onload=()=>{photo.classList.remove("hidden");document.getElementById("tryOnPlaceholder").classList.add("hidden")};photo.onerror=()=>{clearTryOnPhoto();toast("Could not open that photo. Please choose another.")};photo.src=tryOnPhotoUrl;const product=products.find(item=>String(item.id)===tryOnProductId);if(product){const garment=document.getElementById("tryOnGarment");garment.src=product.image||"";garment.classList.remove("hidden")}});
-document.getElementById("tryOnScale").addEventListener("input",event=>document.getElementById("tryOnStage").style.setProperty("--tryon-scale",event.target.value+"%"));
-document.getElementById("tryOnPosition").addEventListener("input",event=>document.getElementById("tryOnStage").style.setProperty("--tryon-top",event.target.value+"%"));
-document.getElementById("tryOnAdd").addEventListener("click",()=>{const product=products.find(item=>String(item.id)===tryOnProductId);if(!product||productStock(product)){toast("This fashion item is out of stock");return}if(Number.isFinite(Number(product.quantity))&&(cart[product.id]||0)>=Number(product.quantity)){toast("That is all the available stock");return}cart[product.id]=(cart[product.id]||0)+1;saveCart();logActivity("Fashion item added from photo try-on",product.name);closePanels();toast("Added to your cart")});
-function appendSupportMessage(text,side="assistant",options={}){const list=document.getElementById("supportChatMessages"),bubble=document.createElement("div");bubble.className="support-message "+(side==="customer"?"customer-message":"assistant-message");bubble.textContent=text;list.appendChild(bubble);if(options.contact){const links=document.createElement("div");links.className="support-contact-links";const email=document.createElement("a");email.href="mailto:infinixshopee@gmail.com";email.textContent="✉ infinixshopee@gmail.com";const phone=document.createElement("a");phone.href="tel:+918827230302";phone.textContent="☎ +91 88272 30302";links.append(email,phone);list.appendChild(links)}if(options.products&&options.products.length){options.products.forEach(product=>{const card=document.createElement("div");card.className="support-product-card";const title=document.createElement("b");title.textContent=product.name;const detail=document.createElement("small");detail.textContent=(product.category||"")+" · "+money(product.price);const button=document.createElement("button");button.type="button";button.textContent="View product";button.dataset.supportProduct=String(product.id);card.append(title,detail,button);list.appendChild(card)})}if(options.vouchers&&options.vouchers.length){options.vouchers.forEach(voucher=>{const card=document.createElement("div");card.className="support-voucher-card";const code=document.createElement("b");code.textContent=voucher.code;const amount=document.createElement("small");amount.textContent="Save "+money(voucher.amount)+(Number(voucher.minimum)>0?" on orders over "+money(voucher.minimum):"");const button=document.createElement("button");button.type="button";button.textContent="Apply in cart";button.dataset.supportVoucher=voucher.code;card.append(code,amount,button);list.appendChild(card)})}list.scrollTop=list.scrollHeight}
-function answerSupportQuestion(question){const q=String(question||"").toLowerCase().trim(),member=isPlusMember();
-  if(/\b(hi|hello|hey|namaste)\b/.test(q))return{text:"Hello! Tell me what you’re shopping for or what you need help with."};
-  if(/\b(return|returns|exchange|refund)\b/.test(q))return{text:"Returns and exchanges can be requested within 7 calendar days after delivery. Keep the item unused with its accessories and original packaging, then contact support with your order number."};
-  if(/\b(delivery|shipping|deliver|ship|arrive|free delivery)\b/.test(q))return{text:"Orders of ₹499 or more qualify for free delivery. Standard delivery is estimated at 2 days; active Infinix Plus members receive a 1-day estimate. You’ll see the estimate in your order details."};
-  if(/\b(track|tracking|order|orders|purchase)\b/.test(q)){if(!currentUser||currentRole!=="customer")return{text:"Please sign in to your customer account, then open Returns & Orders to see your order status and estimated delivery date."};const key=String(currentUser.username||currentUser.email||"").toLowerCase(),mine=orderHistory.filter(order=>String(order.customer||"").toLowerCase()===key).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));if(!mine.length)return{text:"I couldn’t find an order on this account yet. After checkout, your order and estimated delivery date will appear under Returns & Orders."};const order=mine[0],date=order.estimatedDate?new Date(order.estimatedDate).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"}):"not available";return{text:"Your latest order #"+order.id+" is “"+(order.status||"Processing")+"”. Estimated delivery: "+date+". Items: "+(order.items||[]).map(item=>item.name).join(", ")+"."}}
-  if(/\b(plus|premium|membership|member)\b/.test(q))return{text:member?"Your Infinix Plus membership is active. It includes one-day delivery, free delivery, early offer access, priority support, and members-only deals. Visit the Plus section for your pass and voucher wallet.":"Infinix Plus offers one-day delivery, free delivery, early offer access, priority support, and members-only deals. Visit the Plus section to view plans and request membership."};
-  if(/\b(voucher|coupon|discount|offer)\b/.test(q)){const available=vouchers.filter(v=>v.active&&(!v.membersOnly||member));return available.length?{text:"Here are the active offers available to you. You can apply a voucher from your cart.",products:[] ,vouchers:available}: {text:member?"There are no active vouchers right now. Check the deals section again soon.":"Some vouchers are reserved for Infinix Plus members. Join Plus to unlock member-only offers."}}
-  if(/\b(payment|pay|card|checkout)\b/.test(q))return{text:"You can review delivery and payment details at checkout. This storefront currently does not process real card payments; don’t enter real card details. Contact support if you need help with an order." ,contact:true};
-  if(/\b(account|sign in|login|password|register|create account)\b/.test(q))return{text:"Tap Account & Lists to sign in or create an account. Use your username or email and password. Choose Customer during sign-up to shop and track orders."};
-  if(/\b(seller|sell|list product|upload product)\b/.test(q))return{text:"Create an account and choose Shopkeeper when signing up. Sellers can add products, specifications, prices, and stock from Shop Management."};
-  const terms=q.split(/[^a-z0-9]+/).filter(word=>word.length>2&&!['find','show','want','need','looking','for','some','product','products','please','recommend','suggest','something'].includes(word));
-  const matches=products.filter(product=>!productStock(product)&&terms.some(term=>[product.name,product.category,product.brand,product.description,product.color,product.size,...Object.values(product.specifications||{})].join(" ").toLowerCase().includes(term))).slice(0,3);
-  if(matches.length)return{text:"These listed items may match what you’re looking for:",products:matches};
-  if(/\b(recommend|suggest|looking for|shop|browse)\b/.test(q)){const popular=products.filter(product=>!productStock(product)).slice(0,3);if(popular.length)return{text:"Here are a few available products to get you started:",products:popular}}
-  return{text:"I’m sorry, I couldn’t confidently solve that. Please contact customer support and they’ll help you directly.",contact:true};
-}
-const supportPanel=document.getElementById("supportChatPanel"),supportToggle=document.getElementById("supportChatToggle");
-supportToggle.addEventListener("click",()=>{const isOpen=supportPanel.classList.toggle("open");supportToggle.setAttribute("aria-expanded",String(isOpen));if(isOpen)document.getElementById("supportChatInput").focus()});
-document.getElementById("supportChatClose").addEventListener("click",()=>{supportPanel.classList.remove("open");supportToggle.setAttribute("aria-expanded","false")});
-document.getElementById("supportChatForm").addEventListener("submit",event=>{event.preventDefault();const input=document.getElementById("supportChatInput"),question=input.value.trim();if(!question)return;appendSupportMessage(question,"customer");const answer=answerSupportQuestion(question);appendSupportMessage(answer.text,"assistant",answer);input.value="";input.focus()});
-document.querySelectorAll(".support-chat-quick button").forEach(button=>button.addEventListener("click",()=>{const question=button.textContent;appendSupportMessage(question,"customer");const answer=answerSupportQuestion(question);appendSupportMessage(answer.text,"assistant",answer)}));
-document.getElementById("supportChatMessages").addEventListener("click",event=>{const voucherButton=event.target.closest("[data-support-voucher]");if(voucherButton){document.getElementById("supportChatPanel").classList.remove("open");supportToggle.setAttribute("aria-expanded","false");document.getElementById("voucherCodeInput").value=voucherButton.dataset.supportVoucher;openPanel(document.getElementById("cartDrawer"));document.getElementById("applyVoucherBtn").click();return}const button=event.target.closest("[data-support-product]");if(!button)return;const product=products.find(item=>String(item.id)===button.dataset.supportProduct);if(!product)return;supportPanel.classList.remove("open");supportToggle.setAttribute("aria-expanded","false");if(categoryBrowseMode&&String(product.category||"").toLowerCase()!==String(activeFilter).toLowerCase())closeCategory();doSearch(product.name)});
-let visualCameraStream=null,visualDescriptorCache=new Map();
-function visualStatus(message){document.getElementById("visualSearchStatus").textContent=message}
-function stopVisualCamera(){if(visualCameraStream){visualCameraStream.getTracks().forEach(track=>track.stop());visualCameraStream=null}const video=document.getElementById("visualCamera"),capture=document.getElementById("captureVisualPhoto");if(video)video.srcObject=null;if(capture)capture.disabled=true}
-async function startVisualCamera(){
-  const video=document.getElementById("visualCamera"),placeholder=document.getElementById("visualCameraPlaceholder");
-  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){visualStatus("Camera access needs a secure HTTPS site. Use Choose a photo instead.");return}
-  try{stopVisualCamera();visualCameraStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"}},audio:false});video.srcObject=visualCameraStream;await video.play();placeholder.classList.add("hidden");document.getElementById("captureVisualPhoto").disabled=false;visualStatus("Camera ready. Point it at a product and scan.")}
-  catch(error){visualStatus(error&&error.name==="NotAllowedError"?"Camera permission was blocked. Allow it in your browser settings or choose a photo.":"Could not start the camera. Choose a photo to search instead.")}
-}
-function imageDescriptor(source){const canvas=document.createElement("canvas");canvas.width=32;canvas.height=32;const context=canvas.getContext("2d",{willReadFrequently:true});context.drawImage(source,0,0,32,32);const pixels=context.getImageData(0,0,32,32).data,descriptor=[];for(let y=0;y<32;y+=2){for(let x=0;x<32;x+=2){const index=(y*32+x)*4;descriptor.push(pixels[index],pixels[index+1],pixels[index+2])}}return descriptor}
-function descriptorDistance(a,b){if(!a||!b||a.length!==b.length)return 1;let total=0;for(let i=0;i<a.length;i++)total+=Math.abs(a[i]-b[i]);return total/(a.length*255)}
-function productImageDescriptor(product){const key=String(product.id);if(visualDescriptorCache.has(key))return Promise.resolve(visualDescriptorCache.get(key));return new Promise(resolve=>{const image=new Image();image.crossOrigin="anonymous";image.onload=()=>{try{const result=imageDescriptor(image);visualDescriptorCache.set(key,result);resolve(result)}catch{resolve(null)}};image.onerror=()=>resolve(null);image.src=product.image||""})}
-async function searchSimilarProducts(source){
-  const results=document.getElementById("visualResults");results.innerHTML="";visualStatus("Comparing your image with listed products…");
-  let query;try{query=imageDescriptor(source)}catch{visualStatus("Could not read that image. Please try another photo.");return}
-  const candidates=await Promise.all(products.map(async product=>({product,score:1-descriptorDistance(query,await productImageDescriptor(product))})).filter(Boolean));
-  const matches=candidates.filter(item=>item.score>=0.78&&!productStock(item.product)).sort((a,b)=>b.score-a.score).slice(0,6);
-  if(!matches.length){results.innerHTML='<div class="visual-no-match">No similar product found.</div>';visualStatus("No close image match was found in the current product listings.");return}
-  visualStatus(`Found ${matches.length} similar product${matches.length===1?"":"s"}.`);
-  results.innerHTML=matches.map(({product,score})=>`<button type="button" class="visual-result" data-visual-product="${escapeAdminText(String(product.id))}"><img src="${escapeAdminText(product.image||"")}" alt=""><span><b>${escapeAdminText(product.name||"Product")}</b><small>${escapeAdminText(product.category||"")} · ${money(product.price)}</small></span><small>${Math.round(score*100)}% match</small></button>`).join("");
-}
-document.getElementById("cameraSearchBtn").addEventListener("click",()=>{document.getElementById("visualResults").innerHTML="";visualStatus("Allow camera access when your browser asks, or choose a product photo.");openPanel(document.getElementById("visualSearchModal"))});
-document.getElementById("startVisualCamera").addEventListener("click",startVisualCamera);
-document.getElementById("captureVisualPhoto").addEventListener("click",()=>{const video=document.getElementById("visualCamera");if(!video.videoWidth){visualStatus("Wait for the camera preview, then scan again.");return}const canvas=document.getElementById("visualCanvas");canvas.width=video.videoWidth;canvas.height=video.videoHeight;canvas.getContext("2d").drawImage(video,0,0);searchSimilarProducts(canvas)});
-document.getElementById("visualPhotoUpload").addEventListener("change",event=>{const file=event.target.files&&event.target.files[0];if(!file)return;stopVisualCamera();const image=new Image();image.onload=()=>{document.getElementById("visualCameraPlaceholder").classList.add("hidden");searchSimilarProducts(image);URL.revokeObjectURL(image.src)};image.onerror=()=>visualStatus("Could not open that photo. Please choose another.");image.src=URL.createObjectURL(file);event.target.value=""});
-document.getElementById("visualResults").addEventListener("click",event=>{const button=event.target.closest("[data-visual-product]");if(!button)return;const product=products.find(item=>String(item.id)===button.dataset.visualProduct);if(product){closePanels();doSearch(product.name)}});
-window.addEventListener("pagehide",stopVisualCamera);
-document.getElementById("cartBtn").onclick=()=>openPanel(document.getElementById("cartDrawer"));
-document.getElementById("bargainToggle").addEventListener("click",()=>{const panel=document.getElementById("bargainPanel"),open=panel.classList.toggle("open");document.getElementById("bargainToggle").setAttribute("aria-expanded",String(open));if(open){resetBargainForCart();renderBargainChat();document.getElementById("bargainInput").focus()}});
-document.getElementById("bargainForm").addEventListener("submit",event=>{event.preventDefault();const input=document.getElementById("bargainInput"),text=input.value.trim();if(!text)return;if(!Object.keys(cart).length){toast("Add products to your cart before bargaining");return}resetBargainForCart();bargainState.messages.push({by:"customer",text});bargainReply(text);saveBargain();input.value="";renderBargainChat()});
-document.getElementById("acceptBargain").addEventListener("click",()=>{if(!(bargainState.offer>0)||!Object.keys(cart).length)return;bargainState.applied=Math.min(6,Math.max(Number(bargainState.applied)||0,Number(bargainState.offer)||0));bargainState.messages.push({by:"bot",text:`Done! Your ${bargainState.applied}% bargaining discount is applied to this cart and will appear at checkout.`});bargainState.offer=0;saveBargain();renderBargainChat();renderCart();toast("Bargaining discount applied")});
-const applyVoucherButton=document.getElementById("applyVoucherBtn");if(applyVoucherButton)applyVoucherButton.onclick=()=>{const code=(document.getElementById("voucherCodeInput")?.value||"").trim().toUpperCase(),subtotal=Object.keys(cart).reduce((sum,id)=>{const p=products.find(item=>item.id===Number(id));return sum+(p?p.price*cart[id]:0)},0),voucher=vouchers.find(item=>item.code===code&&item.active);if(!voucher){toast("That voucher is not active");return}if(voucher.membersOnly&&!isPlusMember()){toast("This voucher is for Infinix Plus members");return}if(subtotal<Number(voucher.minimum||0)){toast("Add more items to use this voucher");return}appliedVoucher=code;localStorage.setItem("infinix-applied-voucher",code);renderCart();toast("Voucher applied")};
-document.getElementById("privacyLink").addEventListener("click",event=>{event.preventDefault();openPanel(document.getElementById("privacyModal"))});document.getElementById("shippingPolicyLink").addEventListener("click",event=>{event.preventDefault();openPanel(document.getElementById("shippingPolicyModal"))});document.getElementById("helpContactLink").addEventListener("click",event=>{event.preventDefault();openPanel(document.getElementById("contactModal"))});document.getElementById("aboutUsLink").addEventListener("click",event=>{event.preventDefault();openPanel(document.getElementById("aboutModal"))});document.getElementById("accountBtn").onclick=()=>{if(currentUser){toast("You are signed in as "+(currentUser.name||currentUser.username));return}openPanel(document.getElementById("accountModal"))};
-document.getElementById("ordersBtn").onclick=()=>{openPanel(document.getElementById("accountModal"));toast("Sign in to see your orders")};
-document.getElementById("allMenu").onclick=()=>document.getElementById("home").scrollIntoView({behavior:"smooth"});
-document.getElementById("menuBtn").onclick=()=>document.getElementById("nav").scrollIntoView({behavior:"smooth"});
-document.getElementById("overlay").onclick=closePanels;document.querySelectorAll("[data-close]").forEach(b=>b.onclick=closePanels);
-document.querySelectorAll("[data-auth]").forEach(b=>b.onclick=()=>{document.querySelectorAll("[data-auth]").forEach(x=>x.classList.toggle("active",x===b));let create=b.dataset.auth==="create";document.getElementById("nameField").classList.toggle("hidden",!create);document.getElementById("authTitle").textContent=create?"Let's make it official.":"Good to see you.";document.getElementById("authSub").textContent=create?"Create an account for all your good finds in one place.":"Sign in for a more personal shopping experience."});
-document.getElementById("authForm").onsubmit=e=>{e.preventDefault();closePanels();toast("You're all set — welcome to Shoply!");e.target.reset()};
-document.getElementById("checkoutBtn").onclick=()=>{if(!Object.keys(cart).length){toast("Add something to your cart first");return}if(!deliveryLocation.street||!deliveryLocation.city||!deliveryLocation.state||!deliveryLocation.landmark||!deliveryLocation.postal){pendingCheckout=true;document.getElementById("locationBtn").click();toast("Please complete your full delivery address first");return}fillCheckoutAddress();openPanel(document.getElementById("checkoutModal"))};
-document.getElementById("checkoutForm").onsubmit=e=>{e.preventDefault();const unavailable=Object.keys(cart).filter(id=>{const p=products.find(item=>String(item.id)===String(id));return !p||productStock(p)||Number.isFinite(Number(p.quantity))&&Number(cart[id])>Number(p.quantity)});if(unavailable.length){unavailable.forEach(id=>delete cart[id]);saveCart();toast("An unavailable or out-of-stock item was removed from your cart. Please review your cart.");return}const ids=Object.keys(cart).map(Number).filter(id=>products.some(p=>p.id===id));const subtotal=ids.reduce((sum,id)=>sum+products.find(p=>p.id===id).price*cart[id],0);const threshold=freeDeliveryThreshold();const freeDelivery=subtotal>0&&(subtotal>=threshold||isPlusMember());const delivery=subtotal===0||freeDelivery?0:(countryCurrency[country]==="INR"?49:5);const voucher=vouchers.find(item=>item.code===appliedVoucher&&item.active&&(!item.membersOnly||isPlusMember())&&subtotal>=Number(item.minimum||0));const voucherDiscount=voucher?Math.min(subtotal,Number(voucher.amount)||0):0;const negotiatedDiscount=bargainAmount(subtotal);const discount=Math.min(subtotal,voucherDiscount+negotiatedDiscount);const total=subtotal+delivery-discount;const identifier=currentUser?(currentUser.username||currentUser.email):"guest";const deliveryDays=isPlusMember()?1:2;orderHistory.unshift({id:Date.now(),customer:identifier,customerName:currentUser?(currentUser.name||currentUser.username):"Guest",customerEmail:e.target.querySelector('input[type="email"]').value.trim(),customerMobile:e.target.elements.mobile.value.trim(),createdAt:new Date().toISOString(),estimatedDate:new Date(Date.now()+deliveryDays*24*60*60*1000).toISOString(),status:"Processing",items:ids.map(id=>{const product=products.find(p=>p.id===id);return{productId:product.id,seller:product.seller||"",name:product.name,quantity:cart[id],price:product.price}}),subtotal,discount,bargainingDiscount:negotiatedDiscount,bargainingPercent:activeBargainPercent(),voucherDiscount,voucherCode:voucher?.code||"",total,currency:countryCurrency[country],address:[e.target.elements.street.value,e.target.elements.landmark.value,e.target.elements.city.value,e.target.elements.state.value,e.target.elements.postal.value].join(", ")});orderHistory[0].items.forEach(item=>{const p=products.find(product=>String(product.id)===String(item.productId));if(p&&Number.isFinite(Number(p.quantity))){p.quantity=Math.max(0,Number(p.quantity)-Number(item.quantity));if(p.quantity===0)p.outOfStock=true}});localStorage.setItem("infinix-products",JSON.stringify(products));localStorage.setItem("infinix-orders",JSON.stringify(orderHistory));logActivity("Order placed","Order #"+orderHistory[0].id+" · "+identifier+" · "+ids.length+" product type(s)");cart={};appliedVoucher="";localStorage.removeItem("infinix-applied-voucher");saveCart();closePanels();renderProducts();renderOrderConfirmation(orderHistory[0]);openPanel(document.getElementById("orderConfirmationModal"));toast("Order placed! Your good things are on the way.");e.target.reset()};
-function renderDealTimer(){const timer=document.getElementById("dealCountdown"),banner=document.querySelector(".deal-banner"),endAt=Number(promotionSettings.endAt),remaining=Math.max(0,Math.ceil((endAt-Date.now())/1000)),active=Number.isFinite(endAt)&&endAt>Date.now();if(timer)timer.classList.toggle("hidden",!active);if(banner)banner.classList.toggle("hidden",!active);if(!active)return;const h=document.getElementById("hours"),m=document.getElementById("minutes"),s=document.getElementById("seconds");if(h)h.textContent=String(Math.floor(remaining/3600)).padStart(2,"0");if(m)m.textContent=String(Math.floor(remaining%3600/60)).padStart(2,"0");if(s)s.textContent=String(remaining%60).padStart(2,"0")}
-function renderPromotions(){const kicker=document.getElementById("dealKicker"),title=document.getElementById("dealTitle"),description=document.getElementById("dealDescription"),container=document.getElementById("publicVouchers");if(kicker)kicker.textContent=promotionSettings.kicker;if(title)title.textContent=promotionSettings.title;if(description)description.textContent=promotionSettings.description;if(!container)return;const active=vouchers.filter(v=>v.active&&(!v.membersOnly||isPlusMember()));const locked=vouchers.some(v=>v.active&&v.membersOnly)&&!isPlusMember();container.innerHTML=active.map(v=>`<button type="button" class="public-voucher" data-copy-voucher="${escapeAdminText(v.code)}"><b>${escapeAdminText(v.code)}</b><span>Save ${money(v.amount)}${Number(v.minimum)>0?` on orders over ${money(v.minimum)}`:" on your order"}</span><small>Tap to apply</small></button>`).join("")+(locked?'<div class="public-voucher locked-member-deal"><b>✦ Infinix Plus</b><span>Members-only offers are waiting for members.</span><small>Join Plus to unlock</small></div>':"");container.querySelectorAll("[data-copy-voucher]").forEach(button=>button.onclick=()=>{const input=document.getElementById("voucherCodeInput"),apply=document.getElementById("applyVoucherBtn");if(input)input.value=button.dataset.copyVoucher;openPanel(document.getElementById("cartDrawer"));if(apply)apply.click()})}
-try{renderPromotions();renderDealTimer()}catch(error){console.error("Promotions could not load:",error)}
-setInterval(()=>{try{renderDealTimer()}catch(error){console.error("Deal timer could not update:",error)}},1000);
-document.addEventListener("keydown",e=>{if(e.key==="Escape")closePanels()});
-
-// Infinix Shopee roles, India-only shopping and local shop management.
-function activityActor(){return currentUser?(currentUser.username||currentUser.email||currentUser.name||"User") : "Guest"}
-function logActivity(action,details){activityLog.unshift({id:Date.now()+Math.random(),action,details:String(details||""),actor:activityActor(),at:new Date().toISOString()});activityLog=activityLog.slice(0,500);localStorage.setItem("infinix-activity-log",JSON.stringify(activityLog))}
-function isPlusMember(user=currentUser){const key=String(user&&(user.username||user.email)||"").toLowerCase(),membership=key&&plusMembers[key];if(!membership)return false;if(membership===true)return true;return !membership.expiresAt||new Date(membership.expiresAt).getTime()>Date.now()}
-function plusPlanLabel(plan){return plan==="yearly"?"Yearly":plan==="quarterly"?"Quarterly":"Monthly"}
-function plusPlanExpiry(plan,from=new Date()){const days=plan==="yearly"?365:plan==="quarterly"?90:30;return new Date(from.getTime()+days*24*60*60*1000)}
-function escapeAdminText(value){return String(value??"").replace(/[&<>"']/g,char=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[char]))}
-function updateDeliveryLocation(){deliveryLocation={...defaultLocations.IN,...(deliveryLocations.IN||{})};document.getElementById("deliveryAddress").textContent=[deliveryLocation.city,deliveryLocation.state,deliveryLocation.postal].filter(Boolean).join(" ");document.getElementById("freeDeliveryText").textContent=isPlusMember()?"Infinix Plus members get free delivery on every order":"Free delivery on orders of "+moneyWhole(499)+" or more"}
-function fillCheckoutAddress(){const form=document.getElementById("checkoutForm");["street","landmark","city","state","postal"].forEach(key=>{form.elements[key].value=deliveryLocation[key]||""})}
-function applyCountry(){country="IN";localStorage.setItem("infinix-country","IN");updateDeliveryLocation();renderProducts();renderCart()}
-function switchRole(role){currentRole=role;localStorage.setItem("infinix-role",role);const customer=role==="customer";document.getElementById("dashboard").classList.toggle("hidden",customer);document.getElementById("popular").classList.toggle("hidden",!customer);document.querySelector(".categories").classList.toggle("hidden",!customer);document.querySelector(".deals").classList.toggle("hidden",!customer);document.querySelector(".newsletter").classList.toggle("hidden",!customer);document.getElementById("cartBtn").style.display=customer?"":"none";document.getElementById("ordersBtn").style.display=customer?"":"none";document.getElementById("dashboardTitle").innerHTML=role==="admin"?'Admin <em>control center.</em>':'Manage your <em>store.</em>';document.getElementById("dashboardKicker").textContent=role==="admin"?"ADMINISTRATION":"SELLER STUDIO";renderProducts();renderCart();updateDeliveryLocation();renderPlusMembership();if(!customer)renderDashboard()}
-function renderDashboard(){const box=document.getElementById("dashboardContent");if(currentRole==="shopkeeper"){const ownProducts=products.filter(p=>String(p.seller||"").toLowerCase()===String(currentUser&&(currentUser.username||currentUser.email)||"").toLowerCase());box.innerHTML='<div class="manager-grid"><div class="manager-card"><h3>Upload a product</h3><p>Publish an item for customers to discover and buy.</p><form id="productForm" class="product-form"><label>Product name<input name="name" required placeholder="e.g. Cotton everyday bag"></label><div class="form-row"><label>Brand<input name="brand" maxlength="60" placeholder="e.g. Nike"></label><label>Size<input name="size" maxlength="30" placeholder="e.g. M, 8, 256 GB"></label></div><div class="form-row"><label>Color<input name="color" maxlength="40" placeholder="e.g. Black"></label><label>Material<input name="material" maxlength="50" placeholder="e.g. Cotton"></label></div><label>Product specifications / description<textarea name="description" rows="4" placeholder="Add features, dimensions, model, material, or other product details"></textarea></label><div class="form-row"><label>Category<select name="category"><option>Tech</option><option>Home</option><option>Fashion</option><option>Beauty</option><option>Other</option></select></label><label>Price<input name="price" type="number" min="0.01" step="0.01" required placeholder="0.00"></label></div><div class="form-row"><label>Compare at price<input name="old" type="number" min="0" step="0.01" placeholder="Optional"></label><label>Badge<input name="badge" placeholder="NEW ARRIVAL"></label></div><div class="form-row"><label>Quantity<input name="quantity" type="number" min="0" step="1" value="1" required></label><label class="stock-toggle"><input name="outOfStock" type="checkbox"> Mark out of stock</label></div><label>Image URL<input name="image" type="url" placeholder="https://..."></label><button class="primary-btn">Publish product <span>→</span></button></form></div><div class="manager-card"><h3>Your listings <span class="count-pill">'+ownProducts.length+'</span></h3><div class="listing-list">'+ownProducts.map(p=>'<div class="listing seller-stock-row"><img src="'+p.image+'"><span><b>'+p.name+'</b><small>'+p.category+' · '+money(p.price)+' · '+(productStock(p)?'Out of stock':(Number.isFinite(Number(p.quantity))?p.quantity+' in stock':'Stock not set'))+'</small></span><label class="stock-edit">Qty<input type="number" min="0" step="1" value="'+(Number.isFinite(Number(p.quantity))?p.quantity:1)+'" data-stock-quantity="'+p.id+'"></label><label class="stock-toggle"><input type="checkbox" data-stock-out="'+p.id+'" '+(productStock(p)?'checked':'')+'> Out of stock</label><button class="primary-btn stock-save" data-stock-save="'+p.id+'">Save stock</button><button class="remove-product" data-seller-delete="'+p.id+'">Remove</button></div>').join("")+'</div></div></div>';box.querySelectorAll("[data-seller-delete]").forEach(b=>b.onclick=()=>{const product=products.find(p=>p.id===Number(b.dataset.sellerDelete));const owner=String(currentUser&&(currentUser.username||currentUser.email)||"").toLowerCase();if(!product||String(product.seller||"").toLowerCase()!==owner){toast("You can only remove your own products");return}logActivity("Seller removed product",product.name);products=products.filter(p=>p.id!==Number(b.dataset.sellerDelete));localStorage.setItem("infinix-products",JSON.stringify(products));renderProducts();renderDashboard();toast(removeCartProduct(product,false)?"Product removed. It was also removed from your cart.":"Product removed from your listings")});box.querySelectorAll("[data-stock-save]").forEach(b=>b.onclick=()=>{const product=products.find(p=>String(p.id)===b.dataset.stockSave),owner=String(currentUser&&(currentUser.username||currentUser.email)||"").toLowerCase();if(!product||String(product.seller||"").toLowerCase()!==owner){toast("You can only update your own products");return}const quantityInput=box.querySelector(`[data-stock-quantity="${b.dataset.stockSave}"]`),outInput=box.querySelector(`[data-stock-out="${b.dataset.stockSave}"]`),quantity=Math.max(0,Math.floor(Number(quantityInput.value)||0));product.quantity=quantity;product.outOfStock=outInput.checked||quantity===0;const removed=productStock(product)?removeCartProduct(product,false):false;localStorage.setItem("infinix-products",JSON.stringify(products));logActivity("Seller updated product stock",product.name+" · "+(productStock(product)?"Out of stock":quantity+" available"));renderProducts();renderDashboard();toast(removed?"Stock updated. This item was removed from your cart.":"Stock updated")});document.getElementById("productForm").onsubmit=e=>{e.preventDefault();const f=new FormData(e.target),name=f.get("name").trim(),price=Number(f.get("price")),image=f.get("image")||"https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=700&q=80";const quantity=Math.max(0,Math.floor(Number(f.get("quantity"))||0)),outOfStock=f.get("outOfStock")==="on"||quantity===0;products.unshift({id:Date.now(),name,description:f.get("description").trim(),brand:f.get("brand").trim(),size:f.get("size").trim(),color:f.get("color").trim(),material:f.get("material").trim(),specifications:{brand:f.get("brand").trim(),size:f.get("size").trim(),color:f.get("color").trim(),material:f.get("material").trim()},category:f.get("category"),price,old:Number(f.get("old"))||price,rating:"New",reviews:"0",badge:f.get("badge")||"NEW ARRIVAL",image,seller:currentUser?(currentUser.username||currentUser.email):"",quantity,outOfStock});localStorage.setItem("infinix-products",JSON.stringify(products));logActivity("Product listed",name+" · "+f.get("category"));renderProducts();renderDashboard();toast("Your product is now listed")}}else{box.innerHTML='<div class="admin-metrics"><div><small>Products</small><b>'+products.length+'</b></div><div><small>Shopkeepers</small><b>1</b></div><div><small>Orders</small><b>0</b></div><div><small>Country pricing</small><b>'+ "India · ₹"+'</b></div></div><div class="manager-card admin-products"><h3>All products <span class="count-pill">Admin controls</span></h3><div class="listing-list">'+products.map(p=>'<div class="listing"><img src="'+p.image+'"><span><b>'+p.name+'</b><small>'+p.category+' · '+money(p.price)+'</small></span><button class="remove-product" data-delete-product="'+p.id+'">Remove</button></div>').join("")+'</div></div>';box.querySelectorAll("[data-delete-product]").forEach(b=>b.onclick=()=>{products=products.filter(p=>p.id!==Number(b.dataset.deleteProduct));localStorage.setItem("infinix-products",JSON.stringify(products));renderProducts();renderDashboard();toast("Product removed")})}}
-
-document.getElementById("locationBtn").addEventListener("click",()=>{updateDeliveryLocation();document.getElementById("locationCountryLabel").textContent="Selected country: "+countryNames.of(country);document.getElementById("locationStreet").value=deliveryLocation.street||"";document.getElementById("locationCity").value=deliveryLocation.city||"";document.getElementById("locationState").value=deliveryLocation.state||"";document.getElementById("locationLandmark").value=deliveryLocation.landmark||"";document.getElementById("locationPostal").value=deliveryLocation.postal||"";openPanel(document.getElementById("locationModal"))});
-document.getElementById("locationForm").addEventListener("submit",e=>{e.preventDefault();deliveryLocations[country]={street:document.getElementById("locationStreet").value.trim(),city:document.getElementById("locationCity").value.trim(),state:document.getElementById("locationState").value.trim(),landmark:document.getElementById("locationLandmark").value.trim(),postal:document.getElementById("locationPostal").value.trim()};localStorage.setItem("infinix-delivery-locations",JSON.stringify(deliveryLocations));updateDeliveryLocation();logActivity("Delivery address updated",[deliveryLocations[country].city,deliveryLocations[country].state,deliveryLocations[country].postal].join(", "));closePanels();toast("Delivery address updated");if(pendingCheckout){pendingCheckout=false;fillCheckoutAddress();openPanel(document.getElementById("checkoutModal"))}});
-document.querySelectorAll("[data-auth]").forEach(b=>b.addEventListener("click",()=>{const creating=b.dataset.auth==="create",role=authRoleOverride||document.getElementById("authRole").value;document.getElementById("authRoleField").classList.toggle("hidden",!creating);document.getElementById("identifierField").classList.toggle("hidden",creating);document.getElementById("usernameField").classList.toggle("hidden",!creating);document.getElementById("emailField").classList.toggle("hidden",!creating);document.getElementById("nameField").classList.toggle("hidden",!creating);document.getElementById("identifierField").querySelector("input").required=!creating;document.getElementById("usernameField").querySelector("input").required=creating;document.getElementById("emailField").querySelector("input").required=creating;document.getElementById("nameField").querySelector("input").required=creating;document.getElementById("authTitle").textContent=creating?"Create your account.":"Good to see you.";document.getElementById("authSub").textContent=creating?"Choose a username and add your email to create an account.":"Sign in with your username or email."}));
-document.getElementById("accountBtn").addEventListener("click",()=>{if(currentUser)return;authRoleOverride=null;document.querySelector('[data-auth="signin"]').click();document.getElementById("authRoleField").classList.add("hidden");document.getElementById("identifierField").querySelector("input").required=true;document.getElementById("usernameField").querySelector("input").required=false;document.getElementById("emailField").querySelector("input").required=false;document.getElementById("nameField").querySelector("input").required=false});
-if(currentUser){document.getElementById("helloText").textContent="Hello, "+(currentUser.name||currentUser.username);document.getElementById("accountLabel").textContent="Your account";document.getElementById("logoutBtn").classList.remove("hidden")}
-document.getElementById("logoutBtn").addEventListener("click",async()=>{try{await fetch("/api/logout",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:"{}"})}catch{}window.__infinixSession=false;localStorage.removeItem("infinix-user");localStorage.removeItem("infinix-role");location.reload()});
-function setTheme(theme){const dark=theme==="dark";document.body.classList.toggle("dark-theme",dark);localStorage.setItem("infinix-theme",dark?"dark":"light");const button=document.getElementById("themeToggle");button.innerHTML=dark?'☀ <span>Theme: Light</span>':'☾ <span>Theme: Dark</span>';button.setAttribute("aria-label",dark?"Switch to light theme":"Switch to dark theme")}
-document.getElementById("themeToggle").addEventListener("click",()=>setTheme(document.body.classList.contains("dark-theme")?"light":"dark"));
-setTheme(localStorage.getItem("infinix-theme")||"light");
-applyCountry();switchRole(currentRole);
-
-// Sign-in and account creation are verified by the Python server.
-document.getElementById("authForm").onsubmit=async e=>{
-  e.preventDefault();
-  const data=new FormData(e.target),creating=!document.getElementById("nameField").classList.contains("hidden");
-  const requested=authRoleOverride||(document.getElementById("authRoleField").classList.contains("hidden")?"customer":document.getElementById("authRole").value);
-  const password=String(data.get("password")||"");
-  const payload=creating
-    ?{username:String(data.get("username")||"").trim(),email:String(data.get("email")||"").trim().toLowerCase(),name:String(data.get("name")||"").trim(),password,role:requested}
-    :{identifier:String(data.get("identifier")||"").trim(),password};
-  try{
-    let response=await fetch(creating?"/api/register":"/api/login",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
-    let result=await response.json();
-    // One-time migration for accounts that only existed in this browser.
-    if(!creating&&!response.ok){
-      const legacy=accounts.find(account=>{const id=String(account.username||account.email||"").toLowerCase();return (id===payload.identifier.toLowerCase()||String(account.email||"").toLowerCase()===payload.identifier.toLowerCase())&&String(account.password||"")===password&&["customer","shopkeeper"].includes(account.role)});
-      if(legacy){
-        const migration={username:String(legacy.username||"").trim(),email:String(legacy.email||"").trim().toLowerCase(),name:String(legacy.name||legacy.username||"").trim(),password,role:legacy.role};
-        response=await fetch("/api/register",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify(migration)});
-        result=await response.json();
-        if(response.ok){accounts=accounts.filter(account=>account!==legacy);localStorage.setItem("infinix-accounts",JSON.stringify(accounts));}
-      }
-    }
-    if(!response.ok){toast(result.error||"Invalid username or password");return}
-    window.__infinixSession=true;
-    localStorage.setItem("infinix-user",JSON.stringify(result.user));
-    localStorage.setItem("infinix-role",result.user.role);
-    authRoleOverride=null;
-    e.target.reset();
-    location.reload();
-  }catch(error){toast("Could not reach the sign-in server. Please try again.")}
-};
-document.getElementById("expiryDate").addEventListener("input",e=>{
-  const digits=e.target.value.replace(/\D/g,"").slice(0,4);
-  e.target.value=digits.length>2?digits.slice(0,2)+" / "+digits.slice(2):digits.length===2?digits+" / ":digits;
-});
-
-function renderOrderConfirmation(order){
-  if(!order)return;
-  const details=document.getElementById("orderConfirmationDetails");
-  const orderedAt=new Date(order.createdAt);
-  const arrivesBy=new Date(order.estimatedDate||orderedAt.getTime()+2*24*60*60*1000);
-  const safe=value=>String(value??"").replace(/[&<>"']/g,char=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[char]));
-  details.innerHTML='<div class="confirmation-meta"><div><small>Order date &amp; time</small><b>'+orderedAt.toLocaleString()+'</b></div><div><small>Estimated delivery</small><b>'+arrivesBy.toLocaleDateString(undefined,{weekday:"short",year:"numeric",month:"short",day:"numeric"})+'</b></div></div><div class="confirmation-products"><h3>Items in this order</h3>'+order.items.map(item=>'<div class="confirmation-product"><span>'+safe(item.name)+' <small>× '+safe(item.quantity)+'</small></span><b>'+new Intl.NumberFormat("en-"+country,{style:"currency",currency:order.currency||countryCurrency[country],maximumFractionDigits:2}).format(item.price*item.quantity)+'</b></div>').join("")+'</div><small class="confirmation-order-number">Order #'+safe(order.id)+'</small>';
-}
-
-function renderOrders(){
-  const key=String(currentUser&&(currentUser.username||currentUser.email)||"").toLowerCase();
-  const orders=orderHistory.filter(order=>String(order.customer||"").toLowerCase()===key);
-  const list=document.getElementById("ordersList");
-  list.innerHTML=orders.length?orders.map(order=>'<article class="order-card"><div class="order-card-head"><b>Order #'+order.id+'</b><span>'+new Date(order.createdAt).toLocaleDateString()+'</span></div><div class="order-status">'+order.status+'</div><div class="order-items">'+order.items.map(item=>'<div>'+item.name+' <span>× '+item.quantity+'</span></div>').join("")+'</div><div class="order-card-total"><span>Total</span><b>'+new Intl.NumberFormat("en-"+country,{style:"currency",currency:order.currency||countryCurrency[country],maximumFractionDigits:2}).format(order.total)+'</b></div><small class="order-address">Delivering to: '+order.address+'</small></article>').join(""):'<div class="orders-empty"><b>No orders yet</b><p>Completed purchases will show up here.</p></div>';
-}
-document.getElementById("ordersBtn").onclick=()=>{
-  if(!currentUser){openPanel(document.getElementById("accountModal"));toast("Sign in to see your orders");return}
-  renderOrders();
-  openPanel(document.getElementById("ordersModal"));
-};
-
-function renderAdminDashboard(){
-  const box=document.getElementById("dashboardContent");
-  const sellers=accounts.filter(account=>account.role==="shopkeeper").length;
-  const customers=accounts.filter(account=>account.role==="customer").length;
-  const esc=escapeAdminText;
-  box.innerHTML=`<div class="admin-metrics"><div><small>Products</small><b>${products.length}</b></div><div><small>Customers</small><b>${customers}</b></div><div><small>Sellers</small><b>${sellers}</b></div><div><small>Orders</small><b>${orderHistory.length}</b></div></div>
-  <div class="admin-control-grid">
-    <section class="manager-card admin-promo-card"><h3>Infinix Plus plan prices</h3><p>Set the customer-facing price for each membership term. New requests use the latest saved prices.</p><form id="plusPricingForm" class="admin-promo-form"><div class="form-row"><label>Monthly (₹)<input name="monthly" type="number" min="1" step="1" value="${esc(plusPlanPrices.monthly)}" required></label><label>Quarterly (₹)<input name="quarterly" type="number" min="1" step="1" value="${esc(plusPlanPrices.quarterly)}" required></label><label>Yearly (₹)<input name="yearly" type="number" min="1" step="1" value="${esc(plusPlanPrices.yearly)}" required></label></div><button class="primary-btn" type="submit">Save membership prices <span>→</span></button></form></section>
-    <section class="manager-card admin-promo-card"><h3>Offers, vouchers &amp; deal timer</h3><p>Manage the customer offer and create vouchers, including deals only Plus members can use. The timer end time is saved across refreshes.</p><form id="promotionForm" class="admin-promo-form"><label>Offer label<input name="kicker" maxlength="60" value="${esc(promotionSettings.kicker)}" required></label><label>Offer heading<input name="title" maxlength="90" value="${esc(promotionSettings.title)}" required></label><label>Offer details<input name="description" maxlength="160" value="${esc(promotionSettings.description)}" required></label><div class="form-row"><label>Timer hours<input name="hours" type="number" min="0" max="720" value="0" required></label><label>Minutes<input name="minutes" type="number" min="0" max="59" value="0" required></label><label>Seconds<input name="seconds" type="number" min="0" max="59" value="0" required></label></div><button class="primary-btn" type="submit">Save offer &amp; start timer <span>→</span></button></form><form id="voucherForm" class="admin-promo-form voucher-admin-form"><h4>Create a voucher</h4><div class="form-row"><label>Voucher code<input name="code" maxlength="18" placeholder="e.g. SAVE100" required></label><label>Discount (₹)<input name="amount" type="number" min="1" step="1" required></label><label>Minimum order (₹)<input name="minimum" type="number" min="0" step="1" value="0" required></label></div><label class="member-only-option"><input name="membersOnly" type="checkbox"> Members-only deal (Infinix Plus)</label><button class="primary-btn" type="submit">Create voucher <span>＋</span></button></form><div class="admin-voucher-list">${vouchers.length?vouchers.map(v=>`<div class="listing"><span><b>${esc(v.code)}</b><small>₹${esc(v.amount)} off · Minimum order ₹${esc(v.minimum||0)} · ${v.membersOnly?"Plus members only · ":""}${v.active?"Active":"Paused"}</small></span><button class="remove-product" data-voucher-toggle="${esc(v.code)}">${v.active?"Pause":"Activate"}</button><button class="remove-product" data-voucher-delete="${esc(v.code)}">Delete</button></div>`).join(""):'<p class="admin-empty">No vouchers created yet.</p>'}</div></section>
-    <section class="manager-card admin-membership-requests"><h3>Infinix Plus requests <span class="count-pill">${membershipRequests.filter(request=>request.status==="Pending").length} pending</span></h3><p>Set each payment request to Pending, Cancelled, or Done. Only Done requests activate Plus membership.</p><div class="listing-list">${membershipRequests.length?membershipRequests.map(request=>`<div class="listing"><span><b>${esc(request.name||request.username)}</b><small>@${esc(request.username)} · ${esc(plusPlanLabel(request.plan||"monthly"))} · ₹${esc(request.amount??plusPlanPrices[request.plan]??plusPlanPrices.monthly)} · Requested ${new Date(request.createdAt).toLocaleString()} · ${esc(request.status)}</small></span>${`<label class="payment-status-control">Payment status<select data-payment-status="${esc(request.id)}"><option value="Pending" ${request.status==="Pending"?"selected":""}>Pending</option><option value="Cancelled" ${["Cancelled","Declined"].includes(request.status)?"selected":""}>Cancelled</option><option value="Done" ${["Done","Approved"].includes(request.status)?"selected":""}>Done</option></select></label><button class="primary-btn membership-approve" data-payment-save="${esc(request.id)}">Save status</button>`}</div>`).join(""):'<p class="admin-empty">No membership requests yet.</p>'}</div></section>
-    <section class="manager-card"><h3>All products <span class="count-pill">${products.length}</span></h3><div class="listing-list">${products.length?products.map(product=>`<div class="listing"><img src="${esc(product.image)}" alt=""><span><b>${esc(product.name)}</b><small>${esc(product.category)} · ${money(product.price)} · Seller: ${esc(product.seller||"Unknown")}</small></span><button class="remove-product" data-admin-product="${esc(product.id)}">Remove</button></div>`).join(""):'<p class="admin-empty">No products are listed.</p>'}</div></section>
-    <section class="manager-card"><h3>Manage users <span class="count-pill">${accounts.length}</span></h3><div class="listing-list">${accounts.length?accounts.map(account=>`<div class="listing admin-user-row"><span><b>${esc(account.name||account.username||"User")}</b><small>@${esc(account.username||"—")} · ${esc(account.role||"customer")} · ${esc(account.email||"No email")}</small></span>${account.role==="admin"?'<span class="admin-protected">Admin</span>':`<button class="remove-product" data-admin-user="${esc(account.username||"")}">Remove</button>`}</div>`).join(""):'<p class="admin-empty">No registered users yet.</p>'}</div></section>
-    <section class="manager-card admin-orders-card"><div class="history-heading"><h3>Manage orders <span class="count-pill">${orderHistory.length}</span></h3><button class="remove-product history-clear-btn" data-clear-orders ${orderHistory.length?"":"disabled"}>Clear order history</button></div><div class="listing-list">${orderHistory.length?orderHistory.map(order=>`<div class="admin-order-row"><div><b>Order #${esc(order.id)}</b><small>${esc(order.customerName||order.customer||"Customer")} · ${new Date(order.createdAt).toLocaleString()}</small><small>${(order.items||[]).map(item=>esc(item.name)).join(", ")} · ${money(order.total||0)}</small>${order.deliveryApproval?.status==="Pending"?'<small class="delivery-approval-note">Seller requests delivery confirmation.</small>':""}</div><span class="order-status">${esc(order.status||"Processing")}</span><button class="remove-product" data-admin-order="${esc(order.id)}">${order.status==="Processing"?"Mark out for delivery":order.status==="Out for delivery"?"Mark delivered":"Mark processing"}</button>${order.deliveryApproval?.status==="Pending"?`<button class="primary-btn membership-approve" data-delivery-approve="${esc(order.id)}">Approve delivered</button><button class="remove-product" data-delivery-reject="${esc(order.id)}">Reject request</button>`:""}<button class="remove-product" data-admin-order-delete="${esc(order.id)}">Delete</button></div>`).join(""):'<p class="admin-empty">No orders have been placed.</p>'}</div></section>
-    <section class="manager-card admin-activity-card"><div class="history-heading"><h3>Recent activities <span class="count-pill">${activityLog.length}</span></h3><button class="remove-product history-clear-btn" data-clear-activity ${activityLog.length?"":"disabled"}>Clear activity history</button></div><p>Account, product, order, membership, and admin changes appear here.</p><div class="activity-list">${activityLog.length?activityLog.slice(0,100).map(item=>`<article class="activity-item"><span class="activity-dot"></span><div><b>${esc(item.action)}</b><small>${esc(item.details)}</small><small>By ${esc(item.actor)} · ${new Date(item.at).toLocaleString()}</small></div></article>`).join(""):'<p class="admin-empty">Activity will appear here as people use the store.</p>'}</div></section>
-  </div>`;
-  box.querySelectorAll("[data-admin-product]").forEach(button=>button.onclick=()=>{
-    const product=products.find(item=>String(item.id)===button.dataset.adminProduct);if(!product)return;
-    if(!confirm(`Remove “${product.name}” from the store?`))return;
-    const removedFromCart=removeCartProduct(product,false);products=products.filter(item=>String(item.id)!==button.dataset.adminProduct);localStorage.setItem("infinix-products",JSON.stringify(products));logActivity("Product removed by admin",product.name);renderProducts();renderAdminDashboard();toast(removedFromCart?"Product removed. It was also removed from your cart.":"Product removed");
-  });
-  box.querySelectorAll("[data-admin-user]").forEach(button=>button.onclick=async()=>{
-    const username=button.dataset.adminUser,account=accounts.find(item=>String(item.username||"")===username);if(!account)return;
-    if(!confirm(`Remove the account “${account.username}”? Any products owned by this seller will also be removed. Existing order records will be retained.`))return;
-    try{
-      const response=await fetch("/api/users/delete",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({username})});
-      const result=await response.json();if(!response.ok)throw new Error(result.error||"Could not remove user");
-      const accountKeys=[account.username,account.email].filter(Boolean).map(value=>String(value).trim().toLowerCase());const key=accountKeys[0]||"";accounts=accounts.filter(item=>item.username!==account.username);
-      let cartItemsRemoved=0;if(account.role==="shopkeeper"){const sellerProducts=products.filter(product=>String(product.seller||"").toLowerCase()===key);sellerProducts.forEach(product=>{if(removeCartProduct(product,false))cartItemsRemoved++});products=products.filter(product=>String(product.seller||"").toLowerCase()!==key);localStorage.setItem("infinix-products",JSON.stringify(products))}
-      accountKeys.forEach(identifier=>delete plusMembers[identifier]);membershipRequests=membershipRequests.filter(request=>![request.username,request.email].filter(Boolean).some(identifier=>accountKeys.includes(String(identifier).trim().toLowerCase())));localStorage.setItem("infinix-plus-members",JSON.stringify(plusMembers));localStorage.setItem("infinix-plus-requests",JSON.stringify(membershipRequests));logActivity("User removed by admin",`${account.username} · ${account.role||"customer"} · membership data cleared`);renderProducts();renderAdminDashboard();toast(cartItemsRemoved?"User removed. Their products were removed from the cart.":"User account and membership removed");
-    }catch(error){toast(error.message||"Could not remove user")}
-  });  box.querySelectorAll("[data-admin-order]").forEach(button=>button.onclick=()=>{
-    const order=orderHistory.find(item=>String(item.id)===button.dataset.adminOrder);if(!order)return;
-    order.status=order.status==="Processing"?"Out for delivery":order.status==="Out for delivery"?"Delivered":"Processing";if(order.status==="Delivered"&&order.deliveryApproval?.status==="Pending"){order.deliveryApproval.status="Approved";order.deliveryApproval.reviewedAt=new Date().toISOString();order.deliveryApproval.reviewedBy=activityActor()}localStorage.setItem("infinix-orders",JSON.stringify(orderHistory));logActivity("Order status changed by admin",`Order #${order.id} · ${order.status}`);renderAdminDashboard();toast("Order status updated");
-  });
-  box.querySelectorAll("[data-delivery-approve]").forEach(button=>button.onclick=()=>{const order=orderHistory.find(item=>String(item.id)===button.dataset.deliveryApprove);if(!order||order.deliveryApproval?.status!=="Pending")return;order.status="Delivered";order.deliveryApproval.status="Approved";order.deliveryApproval.reviewedAt=new Date().toISOString();order.deliveryApproval.reviewedBy=activityActor();localStorage.setItem("infinix-orders",JSON.stringify(orderHistory));logActivity("Seller delivery confirmation approved",`Order #${order.id}`);renderAdminDashboard();toast("Order marked delivered")});
-  box.querySelectorAll("[data-delivery-reject]").forEach(button=>button.onclick=()=>{const order=orderHistory.find(item=>String(item.id)===button.dataset.deliveryReject);if(!order||order.deliveryApproval?.status!=="Pending")return;order.deliveryApproval.status="Declined";order.deliveryApproval.reviewedAt=new Date().toISOString();order.deliveryApproval.reviewedBy=activityActor();localStorage.setItem("infinix-orders",JSON.stringify(orderHistory));logActivity("Seller delivery confirmation declined",`Order #${order.id}`);renderAdminDashboard();toast("Delivery confirmation request declined")});
-  box.querySelectorAll("[data-admin-order-delete]").forEach(button=>button.onclick=()=>{
-    const order=orderHistory.find(item=>String(item.id)===button.dataset.adminOrderDelete);if(!order)return;
-    if(!confirm(`Delete order #${order.id}?`))return;
-    orderHistory=orderHistory.filter(item=>String(item.id)!==button.dataset.adminOrderDelete);localStorage.setItem("infinix-orders",JSON.stringify(orderHistory));logActivity("Order deleted by admin",`Order #${order.id}`);renderAdminDashboard();toast("Order deleted");
-  });
-  box.querySelector("[data-clear-orders]").onclick=()=>{if(!orderHistory.length)return;if(!confirm("Permanently clear all order history? This removes the order records for customers and sellers too."))return;const removedCount=orderHistory.length;orderHistory=[];localStorage.setItem("infinix-orders","[]");logActivity("Order history cleared by admin",removedCount+" order(s) removed");renderAdminDashboard();toast("Order history cleared")};
-  box.querySelector("[data-clear-activity]").onclick=()=>{if(!activityLog.length)return;if(!confirm("Clear the entire recent activity history? This cannot be undone."))return;activityLog=[];localStorage.setItem("infinix-activity-log","[]");renderAdminDashboard();toast("Activity history cleared")};
-  box.querySelector("#promotionForm").onsubmit=e=>{e.preventDefault();const form=e.currentTarget,seconds=Math.max(0,Number(form.elements.hours.value)*3600+Number(form.elements.minutes.value)*60+Number(form.elements.seconds.value));promotionSettings={kicker:form.elements.kicker.value.trim(),title:form.elements.title.value.trim(),description:form.elements.description.value.trim(),endAt:Date.now()+seconds*1000};localStorage.setItem("infinix-promotion-settings",JSON.stringify(promotionSettings));logActivity("Deal offer updated",promotionSettings.title+" · timer set for "+seconds+" seconds");renderPromotions();renderDealTimer();renderAdminDashboard();toast("Offer saved and timer started")};
-  box.querySelector("#voucherForm").onsubmit=e=>{e.preventDefault();const form=e.currentTarget,code=form.elements.code.value.trim().toUpperCase();if(!/^[A-Z0-9_-]{2,18}$/.test(code)){toast("Use 2–18 letters, numbers, hyphens, or underscores for the code");return}if(vouchers.some(v=>v.code===code)){toast("That voucher code already exists");return}vouchers.unshift({code,amount:Number(form.elements.amount.value),minimum:Number(form.elements.minimum.value),membersOnly:form.elements.membersOnly.checked,active:true,createdAt:new Date().toISOString()});localStorage.setItem("infinix-vouchers",JSON.stringify(vouchers));logActivity("Voucher created by admin",code+" · ₹"+form.elements.amount.value+" off"+(form.elements.membersOnly.checked?" · Plus members only":""));renderPromotions();renderAdminDashboard();toast("Voucher created")};
-  box.querySelectorAll("[data-voucher-toggle]").forEach(button=>button.onclick=()=>{const voucher=vouchers.find(v=>v.code===button.dataset.voucherToggle);if(!voucher)return;voucher.active=!voucher.active;localStorage.setItem("infinix-vouchers",JSON.stringify(vouchers));logActivity(voucher.active?"Voucher activated":"Voucher paused",voucher.code);renderPromotions();renderAdminDashboard()});
-  box.querySelectorAll("[data-voucher-delete]").forEach(button=>button.onclick=()=>{vouchers=vouchers.filter(v=>v.code!==button.dataset.voucherDelete);if(appliedVoucher===button.dataset.voucherDelete){appliedVoucher="";localStorage.removeItem("infinix-applied-voucher")}localStorage.setItem("infinix-vouchers",JSON.stringify(vouchers));logActivity("Voucher deleted",button.dataset.voucherDelete);renderPromotions();renderCart();renderAdminDashboard()});
-  box.querySelector("#plusPricingForm").onsubmit=e=>{e.preventDefault();const form=e.currentTarget;plusPlanPrices={monthly:Number(form.elements.monthly.value),quarterly:Number(form.elements.quarterly.value),yearly:Number(form.elements.yearly.value)};localStorage.setItem("infinix-plus-plan-prices",JSON.stringify(plusPlanPrices));logActivity("Infinix Plus prices changed",`Monthly ₹${plusPlanPrices.monthly} · Quarterly ₹${plusPlanPrices.quarterly} · Yearly ₹${plusPlanPrices.yearly}`);renderAdminDashboard();renderPlusPlans();toast("Membership prices updated")};
-  box.querySelectorAll("[data-payment-save]").forEach(button=>button.onclick=()=>{const request=membershipRequests.find(item=>String(item.id)===button.dataset.paymentSave),select=box.querySelector(`[data-payment-status="${button.dataset.paymentSave}"]`);if(!request||!select)return;const status=select.value,previous=request.status,key=String(request.username||request.email||"").toLowerCase(),membership=plusMembers[key],now=new Date();if(status==="Done"&&previous!=="Done"){const plan=request.plan||"monthly";plusMembers[key]={plan,amount:Number(request.amount??plusPlanPrices[plan]??plusPlanPrices.monthly),activatedAt:now.toISOString(),expiresAt:plusPlanExpiry(plan,now).toISOString(),requestId:request.id}}else if(membership&&(String(membership.requestId)===String(request.id)||previous==="Approved"||previous==="Done")){delete plusMembers[key]}request.status=status;request.reviewedAt=now.toISOString();request.reviewedBy=activityActor();localStorage.setItem("infinix-plus-members",JSON.stringify(plusMembers));localStorage.setItem("infinix-plus-requests",JSON.stringify(membershipRequests));logActivity("Infinix Plus payment request updated",request.username+" · "+status);renderAdminDashboard();renderPlusMembership();toast("Payment request marked "+status.toLowerCase())});
-}
-
-const existingRenderDashboard=renderDashboard;
-renderDashboard=function(){
-  if(currentRole==="admin"){renderAdminDashboard();return}
-  existingRenderDashboard();
-  if(currentRole!=="shopkeeper")return;
-  const sellerKey=String(currentUser&&(currentUser.username||currentUser.email)||"").toLowerCase();
-  const sellerOrders=orderHistory.filter(order=>order.items.some(item=>String(item.seller||"").toLowerCase()===sellerKey));
-  const escapeHtml=value=>String(value??"").replace(/[&<>"']/g,char=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[char]));
-  const section=document.createElement("section");
-  section.className="manager-card seller-orders";
-  const sellerOrderCard=order=>{const deliveryAction=order.status==="Delivered"?'<span class="delivered-label">Delivered</span>':order.status!=="Out for delivery"?'<button class="remove-product delivery-action" data-seller-dispatch="'+escapeHtml(order.id)+'">Mark out for delivery</button>':order.deliveryApproval?.status==="Pending"?'<span class="delivery-pending-label">Awaiting admin approval</span>':'<button class="remove-product delivery-action" data-delivery-request="'+escapeHtml(order.id)+'">Request delivery confirmation</button>';return '<article class="seller-order"><div class="seller-order-head"><div><b>Order #'+escapeHtml(order.id)+'</b><small>'+new Date(order.createdAt).toLocaleString()+'</small></div><span class="order-status">'+escapeHtml(order.status||"Processing")+'</span></div><div class="seller-customer"><b>'+escapeHtml(order.customerName||order.customer||"Customer")+'</b><span>Mobile: '+escapeHtml(order.customerMobile||"Not provided")+'</span><span>Email: '+escapeHtml(order.customerEmail||"Not provided")+'</span></div><div class="seller-order-items">'+order.items.map(item=>'<div>'+escapeHtml(item.name)+' <span class="seller-ordered-quantity">Qty ordered: '+escapeHtml(item.quantity)+'</span></div>').join("")+'</div><div class="seller-order-address"><b>Deliver to</b><span>'+escapeHtml(order.address||"Address not available")+'</span></div><div class="seller-order-foot"><b>'+new Intl.NumberFormat("en-"+country,{style:"currency",currency:order.currency||countryCurrency[country],maximumFractionDigits:2}).format(order.total||0)+'</b>'+deliveryAction+'</div></article>'};
-  section.innerHTML='<h3>Customer orders <span class="count-pill">'+sellerOrders.length+'</span></h3><p>Mark orders out for delivery. To mark an order delivered, send a request for admin approval.</p><div class="seller-order-list">'+(sellerOrders.length?sellerOrders.map(sellerOrderCard).join(""):'<div class="orders-empty"><b>No customer orders yet</b><p>New customer purchases will appear here.</p></div>')+'</div>';
-  document.getElementById("dashboardContent").appendChild(section);
-  section.querySelectorAll("[data-seller-dispatch]").forEach(button=>button.addEventListener("click",()=>{const order=orderHistory.find(item=>String(item.id)===button.dataset.sellerDispatch);if(!order||!order.items.some(item=>String(item.seller||"").toLowerCase()===sellerKey)||currentRole!=="shopkeeper")return;order.status="Out for delivery";order.deliveryApproval=null;localStorage.setItem("infinix-orders",JSON.stringify(orderHistory));logActivity("Seller marked order out for delivery",`Order #${order.id}`);renderDashboard();toast("Order marked out for delivery")}));
-  section.querySelectorAll("[data-delivery-request]").forEach(button=>button.addEventListener("click",()=>{const order=orderHistory.find(item=>String(item.id)===button.dataset.deliveryRequest);if(!order||order.status!=="Out for delivery"||!order.items.some(item=>String(item.seller||"").toLowerCase()===sellerKey)||currentRole!=="shopkeeper")return;if(order.deliveryApproval?.status==="Pending")return;order.deliveryApproval={status:"Pending",requestedAt:new Date().toISOString(),seller:currentUser.username||currentUser.email};localStorage.setItem("infinix-orders",JSON.stringify(orderHistory));logActivity("Seller requested delivered approval",`Order #${order.id}`);renderDashboard();toast("Delivery confirmation request sent to the admin")}));
-};
-if(currentRole==="shopkeeper")renderDashboard();
-if(currentRole==="admin")renderAdminDashboard();
-
-const heroSlides=[
-  {eyebrow:"THE WEEKEND EDIT",title:"Good things.<br><em>Great prices.</em>",description:"Your favorites are closer than ever. Find something lovely today.",image:"https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=1100&q=85",alt:"Red running shoe",offerTitle:"Weekend deal",offerText:"Up to 40% off",tag:"PICK"},
-  {eyebrow:"MAKE YOURSELF AT HOME",title:"A softer space.<br><em>A happier day.</em>",description:"Thoughtful home finds to make every corner feel a little more like you.",image:"https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?auto=format&fit=crop&w=1100&q=85",alt:"Calm modern home interior",offerTitle:"Home refresh",offerText:"Lovely finds inside",tag:"HOME"},
-  {eyebrow:"LITTLE THINGS, BIG JOY",title:"Find your next<br><em>favorite thing.</em>",description:"Explore feel-good picks for everyday life, all in one place.",image:"https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&w=1100&q=85",alt:"Wireless headphones",offerTitle:"Good find",offerText:"Worth a closer look",tag:"NEW"}
-];
-let activeHeroSlide=0;
-const heroDots=[...document.querySelectorAll(".hero-dots button")];
-function showHeroSlide(index){
-  activeHeroSlide=(index+heroSlides.length)%heroSlides.length;
-  const slide=heroSlides[activeHeroSlide];
-  document.getElementById("heroEyebrow").textContent=slide.eyebrow;
-  document.getElementById("heroTitle").innerHTML=slide.title;
-  document.getElementById("heroDescription").textContent=slide.description;
-  const image=document.getElementById("heroImage");image.src=slide.image;image.alt=slide.alt;
-  document.getElementById("heroOfferTitle").textContent=slide.offerTitle;
-  document.getElementById("heroOfferText").textContent=slide.offerText;
-  document.getElementById("heroTag").textContent=slide.tag;
-  heroDots.forEach((dot,i)=>{dot.classList.toggle("active",i===activeHeroSlide);if(i===activeHeroSlide)dot.setAttribute("aria-current","true");else dot.removeAttribute("aria-current")});
-}
-let heroAutoplayTimer;
-function restartHeroAutoplay(){clearTimeout(heroAutoplayTimer);heroAutoplayTimer=setTimeout(()=>{showHeroSlide(activeHeroSlide+1);restartHeroAutoplay()},5000)}
-heroDots.forEach(dot=>dot.addEventListener("click",()=>{showHeroSlide(Number(dot.dataset.slide));restartHeroAutoplay()}));
-restartHeroAutoplay();
-
-document.querySelectorAll("[data-password-toggle]").forEach(button=>button.addEventListener("click",()=>{
-  const passwordInput=document.getElementById(button.dataset.passwordToggle);
-  const showing=passwordInput.type==="password";
-  passwordInput.type=showing?"text":"password";
-  button.textContent=showing?"Hide":"Show";
-  button.setAttribute("aria-label",showing?"Hide password":"Show password");
-}));
-document.getElementById("authForm").addEventListener("reset",()=>{
-  const passwordInput=document.getElementById("authPassword");
-  const toggle=document.querySelector('[data-password-toggle="authPassword"]');
-  passwordInput.type="password";
-  toggle.textContent="Show";
-  toggle.setAttribute("aria-label","Show password");
-});
-
-function updateSignupFieldRequirements(){
-  const creating=!document.getElementById("nameField").classList.contains("hidden");
-  document.getElementById("authRole").required=creating;
-  document.querySelector('#usernameField input').required=creating;
-  document.querySelector('#emailField input').required=creating;
-  document.querySelector('#nameField input').required=creating;
-}
-document.querySelector('#usernameField input').addEventListener("input",updateSignupFieldRequirements);
-document.getElementById("authRole").addEventListener("change",updateSignupFieldRequirements);
-document.querySelectorAll("[data-auth]").forEach(button=>button.addEventListener("click",updateSignupFieldRequirements));
-
-function renderPlusHub(member,userKey,membership){
-  const hub=document.getElementById("plusHub");if(!hub)return;
-  const activeDeals=vouchers.filter(v=>v.active&&v.membersOnly);
-  if(!member){
-    const offerCount=activeDeals.length;
-    hub.innerHTML='<div class="plus-hub-heading"><span class="kicker">YOUR MEMBER SPACE</span><b>Unlock a more rewarding way to shop.</b></div><div class="plus-feature-grid"><article class="plus-feature-card"><span>✦</span><b>Digital Plus pass</b><small>Your membership and expiry date in one place.</small></article><article class="plus-feature-card"><span>▣</span><b>Private deal wallet</b><small>Keep Plus-only vouchers ready for checkout.</small></article><article class="plus-feature-card"><span>↗</span><b>Priority support</b><small>A direct route for membership help.</small></article><article class="plus-feature-card"><span>⚡</span><b>One-day delivery</b><small>Available on eligible orders with active Plus.</small></article></div><div class="plus-hub-locked"><span>🔒</span><span><b>Plus member space</b><small>'+(offerCount?offerCount+' private offer'+(offerCount===1?' is':'s are')+' currently waiting for members.':'Your member-only vouchers and pass will appear here after approval.')+'</small></span><button type="button" id="plusHubJoin">Explore plans →</button></div>';
-    document.getElementById("plusHubJoin").onclick=()=>document.getElementById("plusJoin").click();return;
+  grid.addEventListener("click",e=>{
+  let a=e.target.closest("[data-add]"),h=e.target.closest("[data-wish]");
+  if(a){
+    let id=a.dataset.add,product=products.find(p=>String(p.id)===String(id));
+    if(!product||productStock(product)){toast("This product is out of stock");return}
+    if(Number.isFinite(Number(product.quantity))&&(cart[id]||0)>=Number(product.quantity)){toast("That is all the available stock");return}
+    cart[id]=(cart[id]||0)+1;saveCart();logActivity("Product added to cart",product.name);toast("Added to your cart — nice choice!");
   }
-  const plan=plusPlanLabel(membership&&membership.plan||"monthly");
-  const expires=membership&&membership!==true&&membership.expiresAt?new Date(membership.expiresAt):null;
-  const expiryText=expires&&!Number.isNaN(expires.getTime())?expires.toLocaleDateString("en-IN",{day:"numeric",month:"long",year:"numeric"}):"Active";
-  const daysLeft=expires&&!Number.isNaN(expires.getTime())?Math.max(0,Math.ceil((expires-new Date())/86400000)):null;
-  const dealHTML=activeDeals.length?activeDeals.map(v=>'<button type="button" class="plus-wallet-voucher" data-plus-voucher="'+escapeAdminText(v.code)+'"><b>'+escapeAdminText(v.code)+'</b><span>Save '+money(v.amount)+(Number(v.minimum)>0?' on orders over '+money(v.minimum):' on your order')+'</span><small>Apply to cart →</small></button>').join(''):'<p class="plus-wallet-empty">No member-only vouchers are active right now. Check back for the next Plus drop.</p>';
-  hub.innerHTML='<div class="plus-hub-heading"><span class="kicker">YOUR MEMBER SPACE</span><b>Welcome to the good side of shopping.</b></div><div class="plus-member-grid"><article class="plus-pass-card"><span class="plus-pass-mark">✦ INFINIX PLUS</span><b>'+escapeAdminText(currentUser&&(currentUser.name||currentUser.username)||"Member")+'</b><small>'+escapeAdminText(plan)+' · Active until '+escapeAdminText(expiryText)+'</small><span class="plus-pass-days">'+(daysLeft===null?'Member pass active':daysLeft+' days remaining')+'</span></article><article class="plus-feature-card"><span>⚡</span><b>One-day delivery</b><small>Plus delivery estimate is applied at checkout while your membership is active.</small></article><article class="plus-feature-card"><span>↗</span><b>Priority support</b><small>Contact the team directly about your Plus account.</small><a href="mailto:infinixshopee@gmail.com?subject=Infinix%20Plus%20priority%20support">Contact priority support →</a></article></div><div class="plus-wallet"><div class="plus-wallet-heading"><span><b>Members-only deal wallet</b><small>Admin-approved offers, ready to apply at checkout.</small></span><span class="count-pill">'+activeDeals.length+' available</span></div><div class="plus-wallet-list">'+dealHTML+'</div></div>';
-  hub.querySelectorAll("[data-plus-voucher]").forEach(button=>button.addEventListener("click",()=>{const input=document.getElementById("voucherCodeInput");if(input)input.value=button.dataset.plusVoucher;openPanel(document.getElementById("cartDrawer"));document.getElementById("applyVoucherBtn").click()}));
-}
-function renderPlusMembership(){
-  const status=document.getElementById("plusStatus"),button=document.getElementById("plusJoin");
-  const member=isPlusMember();
-  const userKey=String(currentUser&&(currentUser.username||currentUser.email)||"").toLowerCase(),membership=plusMembers[userKey],pendingRequest=userKey&&membershipRequests.find(request=>String(request.username||request.email||"").toLowerCase()===userKey&&request.status==="Pending"),pending=!!pendingRequest;
-  const cancellationScheduled=member&&membership&&membership!==true&&membership.cancelAtEnd;
-  const paidThrough=membership&&membership!==true&&membership.expiresAt?new Date(membership.expiresAt).toLocaleDateString("en-IN",{day:"numeric",month:"long",year:"numeric"}):"the paid-through date";
-  status.textContent=member?(cancellationScheduled?`Cancellation scheduled. Your ${plusPlanLabel(membership.plan||"monthly")} benefits remain active through ${paidThrough}. No refund will be issued.`:`Your ${plusPlanLabel(membership.plan||"monthly")} Infinix Plus membership is active. One-day delivery, free delivery, early offer access, priority support, and members-only deals are unlocked.`):pending?`Your ${plusPlanLabel(pendingRequest.plan||"monthly")} request (${moneyWhole(pendingRequest.amount??plusPlanPrices[pendingRequest.plan||"monthly"])}) is awaiting admin approval.`:"Choose a plan to unlock one-day delivery, free delivery, early access, priority support, and members-only deals.";
-  button.innerHTML=member?(cancellationScheduled?'Cancellation scheduled <span>✓</span>':'Leave Infinix Plus <span>→</span>'):pending?'Request pending <span>…</span>':'Join Infinix Plus <span>→</span>';
-  button.disabled=pending||cancellationScheduled;
-  button.classList.toggle("plus-active",member);
-  renderPlusHub(member,userKey,membership);
-}
-function renderPlusPlans(){for(const plan of ["monthly","quarterly","yearly"]){const price=document.getElementById(plan+"PlanPrice");if(price)price.textContent=moneyWhole(plusPlanPrices[plan])}}
-renderPlusPlans();
-document.querySelectorAll("[data-plus-plan]").forEach(button=>button.addEventListener("click",()=>{selectedPlusPlan=button.dataset.plusPlan;const amount=Number(plusPlanPrices[selectedPlusPlan]);document.getElementById("selectedPlusPrice").textContent=moneyWhole(amount)+".";document.getElementById("selectedPlusPlanText").textContent=plusPlanLabel(selectedPlusPlan)+" plan · Scan the QR code to pay.";closePanels();openPanel(document.getElementById("plusPaymentModal"))}));
-document.getElementById("plusJoin").addEventListener("click",()=>{
-  if(!currentUser){openPanel(document.getElementById("accountModal"));toast("Sign in as a customer to join Infinix Plus");return}
-  if(currentRole!=="customer"){toast("Infinix Plus is for customer accounts");return}
-  if(membershipRequests.some(request=>String(request.username||request.email||"").toLowerCase()===String(currentUser.username||currentUser.email||"").toLowerCase()&&request.status==="Pending")){toast("Your membership request is awaiting admin approval");return}
-  if(!isPlusMember()){renderPlusPlans();openPanel(document.getElementById("plusPlanModal"));return}
-  const key=String(currentUser.username||currentUser.email||"").toLowerCase();
-  let membership=plusMembers[key];
-  if(membership===true){const activatedAt=new Date();membership={plan:"monthly",amount:Number(plusPlanPrices.monthly),activatedAt:activatedAt.toISOString(),expiresAt:plusPlanExpiry("monthly",activatedAt).toISOString()};plusMembers[key]=membership}
-  if(!membership.expiresAt)membership.expiresAt=plusPlanExpiry(membership.plan||"monthly",new Date()).toISOString();
-  membership.cancelAtEnd=true;membership.cancelledAt=new Date().toISOString();plusMembers[key]=membership;
-  localStorage.setItem("infinix-plus-members",JSON.stringify(plusMembers));
-  logActivity("Infinix Plus cancellation scheduled",(currentUser.username||currentUser.email)+" · active through "+new Date(membership.expiresAt).toLocaleDateString("en-IN")+" · no refund");
-  document.getElementById("plusCancellationMessage").textContent=`Your membership and benefits will remain active until ${new Date(membership.expiresAt).toLocaleDateString("en-IN",{day:"numeric",month:"long",year:"numeric"})}. It will not renew, and no refund will be issued.`;
-  renderPlusMembership();updateDeliveryLocation();renderCart();
-  closePanels();openPanel(document.getElementById("plusCancellationModal"));
+  if(h){
+    let id=Number(h.dataset.wish);
+    wish=wish.includes(id)?wish.filter(x=>x!==id):[...wish,id];
+    localStorage.setItem("shoply-wish",JSON.stringify(wish));
+    logActivity(wish.includes(id)?"Product added to wishlist":"Product removed from wishlist",products.find(p=>p.id===id)?.name||"Product");
+    renderProducts();toast(wish.includes(id)?"Saved to your wishlist":"Removed from your wishlist");
+  }
 });
-document.getElementById("plusConfirmPayment").addEventListener("click",()=>{
-  if(!currentUser||currentRole!=="customer"){closePanels();toast("Sign in with a customer account to activate Infinix Plus");return}
-  const username=String(currentUser.username||currentUser.email||""),key=username.toLowerCase();
-  if(isPlusMember()){closePanels();toast("Your Infinix Plus membership is already active");return}
-  const existing=membershipRequests.find(request=>String(request.username||request.email||"").toLowerCase()===key&&request.status==="Pending");
-  if(!existing){const amount=Number(plusPlanPrices[selectedPlusPlan]);membershipRequests.unshift({id:Date.now(),username,email:currentUser.email||"",name:currentUser.name||username,status:"Pending",plan:selectedPlusPlan,amount,createdAt:new Date().toISOString()});localStorage.setItem("infinix-plus-requests",JSON.stringify(membershipRequests));logActivity("Infinix Plus request submitted",username+" · "+plusPlanLabel(selectedPlusPlan)+" · ₹"+amount)}
-  closePanels();renderPlusMembership();openPanel(document.getElementById("plusRequestSentModal"));
-});
-renderPlusMembership();
 
-window.addEventListener("storage",event=>{if(event.key!=="infinix-products")return;try{products=JSON.parse(event.newValue||"[]");const unavailable=Object.keys(cart).filter(id=>{const item=products.find(p=>String(p.id)===String(id));return !item||productStock(item)});unavailable.forEach(id=>delete cart[id]);if(unavailable.length)localStorage.setItem("shoply-cart",JSON.stringify(cart));renderProducts();renderCart();if(unavailable.length)toast("An unavailable item was removed from your cart.")}catch(error){console.error("Could not sync product updates",error)}});
+document.getElementById("cartItems").addEventListener("click",e=>{
+  let q=e.target.closest("[data-qty]"),r=e.target.closest("[data-remove]");
+  if(q){
+    let id=q.dataset.qty,next=(Number(cart[id])||0)+Number(q.dataset.change),product=products.find(item=>String(item.id)===String(id));
+    if(next<=0)delete cart[id];
+    else if(!product||productStock(product)){delete cart[id];toast("This product is no longer available and was removed from your cart")}
+    else if(Number.isFinite(Number(product.quantity))&&next>Number(product.quantity)){toast("That is all the available stock");return}
+    else cart[id]=next;
+    saveCart();
+  }
+  if(r){delete cart[r.dataset.remove];saveCart()}
+});
+
+document.querySelectorAll(".filter").forEach(b=>b.onclick=()=>{
+  document.querySelectorAll(".filter").forEach(x=>x.classList.remove("active"));
+  b.classList.add("active");
+  activeFilter=b.dataset.filter;
+  selectedSpecs.category=activeFilter;
+  visibleCount=8;
+  renderProducts();
+});
+
+const categoryDetails={
+  Tech:{title:"Tech & gadgets",description:"Discover electronics and smart everyday picks listed by our sellers."},
+  Home:{title:"Home & living",description:"Browse seller-listed pieces for your home, comfort, and daily routines."},
+  Fashion:{title:"Fashion finds",description:"Explore clothing and accessories from Infinix Shopee sellers."},
+  Beauty:{title:"Beauty & care",description:"Shop beauty and personal-care finds listed by our sellers."},
+  Other:{title:"Other finds",description:"Explore more products listed by Infinix Shopee sellers."}
+};
+
+function openCategory(category){
+  const key=Object.keys(categoryDetails).find(name=>name.toLowerCase()===String(category||"").toLowerCase());
+  if(!key)return;
+  activeFilter=key;
+  Object.keys(selectedSpecs).forEach(name=>selectedSpecs[name]="");
+  selectedSpecs.category=key;
+  searchTerm="";
+  document.getElementById("productSearch").value="";
+  document.getElementById("searchInput").value="";
+  categoryBrowseMode=true;
+  document.querySelector(`[data-product-filter="category"]`).closest("label").classList.add("hidden");
+  document.body.classList.add("category-browse-mode");
+  const header=document.getElementById("categoryBrowseHeader"),details=categoryDetails[key];
+  header.classList.remove("hidden");
+  document.getElementById("categoryBrowseTitle").textContent=details.title;
+  document.getElementById("categoryBrowseDescription").textContent=details.description;
+  document.querySelectorAll(".filter").forEach(button=>button.classList.toggle("active",button.dataset.filter===key));
+  renderProducts();
+  document.getElementById("popular").scrollIntoView({behavior:"smooth",block:"start"});
+}
+
+function closeCategory(){
+  categoryBrowseMode=false;
+  document.body.classList.remove("category-browse-mode");
+  document.getElementById("categoryBrowseHeader").classList.add("hidden");
+  document.querySelector(`[data-product-filter="category"]`).closest("label").classList.remove("hidden");
+  activeFilter="all";
+  selectedSpecs.category="all";
+  searchTerm="";
+  document.getElementById("productSearch").value="";
+  document.getElementById("searchInput").value="";
+  renderProducts();
+  document.getElementById("home").scrollIntoView({behavior:"smooth",block:"start"});
+}
+
+function doSearch(source){
+  let query=(source!==undefined?source:(document.getElementById("searchInput").value||document.getElementById("productSearch").value)).trim();
+  searchTerm=query;
+  activeFilter=categoryBrowseMode?activeFilter:"all";
+  selectedSpecs.category=categoryBrowseMode?activeFilter:"all";
+  document.getElementById("searchInput").value=query;
+  document.getElementById("productSearch").value=query;
+  visibleCount=12;
+  renderProducts();
+  document.getElementById("popular").scrollIntoView({behavior:"smooth"});
+}
+  document.getElementById("searchBtn").onclick=()=>doSearch(document.getElementById("searchInput").value);
+document.getElementById("searchInput").addEventListener("keydown",e=>{if(e.key==="Enter")doSearch(e.target.value)});
+document.getElementById("productSearchBtn").onclick=()=>doSearch(document.getElementById("productSearch").value);
+document.getElementById("productSearch").addEventListener("keydown",e=>{if(e.key==="Enter")doSearch(e.target.value)});
+
+document.getElementById("showMore").onclick=()=>{visibleCount=12;renderProducts()};
+
+const filterToggle=document.getElementById("toggleProductFilters"),filterPanel=document.getElementById("productFilters");
+filterToggle.addEventListener("click",()=>{
+  const open=filterPanel.classList.toggle("open");
+  filterToggle.setAttribute("aria-expanded",String(open));
+  filterToggle.classList.toggle("active",open);
+});
+
+document.getElementById("productFilters").addEventListener("change",event=>{
+  const control=event.target.closest("[data-product-filter]");
+  if(!control)return;
+  selectedSpecs[control.dataset.productFilter]=control.value;
+  if(control.dataset.productFilter==="category"){
+    activeFilter=control.value;
+    document.querySelectorAll(".filter").forEach(button=>button.classList.toggle("active",button.dataset.filter===activeFilter));
+  }
+  visibleCount=12;
+  renderProducts();
+});
+
+document.getElementById("clearProductFilters").addEventListener("click",clearProductFilters);
+
+let tryOnPhotoUrl=null,tryOnProductId=null;
+
+function clearTryOnPhoto(){
+  if(tryOnPhotoUrl){URL.revokeObjectURL(tryOnPhotoUrl);tryOnPhotoUrl=null}
+  const photo=document.getElementById("tryOnPerson"),
+        garment=document.getElementById("tryOnGarment"),
+        placeholder=document.getElementById("tryOnPlaceholder");
+  if(photo){photo.removeAttribute("src");photo.classList.add("hidden")}
+  if(garment){garment.removeAttribute("src");garment.classList.add("hidden")}
+  if(placeholder)placeholder.classList.remove("hidden");
+  const input=document.getElementById("tryOnPhoto");
+  if(input)input.value="";
+}
+
+function openTryOn(productId){
+  const product=products.find(item=>String(item.id)===String(productId));
+  if(!product||!isFashionProduct(product)){toast("Photo try-on is available for Fashion items only");return}
+  if(currentRole!=="customer"){toast("Sign in as a customer to use photo try-on");return}
+  tryOnProductId=String(product.id);
+  const photo=document.getElementById("tryOnPerson"),
+        garment=document.getElementById("tryOnGarment"),
+        stage=document.getElementById("tryOnStage");
+  clearTryOnPhoto();
+  tryOnProductId=String(product.id);
+  document.getElementById("tryOnProductName").textContent=product.name||"Fashion item";
+  document.getElementById("tryOnProductPrice").textContent=money(product.price);
+  const productImage=document.getElementById("tryOnProductImage");
+  productImage.src=product.image||"";
+  productImage.alt=product.name||"Fashion item";
+  garment.src=product.image||"";
+  garment.classList.remove("hidden");
+  stage.style.setProperty("--tryon-scale","45%");
+  stage.style.setProperty("--tryon-top","42%");
+  document.getElementById("tryOnScale").value="45";
+  document.getElementById("tryOnPosition").value="42";
+  openPanel(document.getElementById("tryOnModal"));
+}
+
+grid.addEventListener("click",event=>{
+  const button=event.target.closest("[data-tryon]");
+  if(button)openTryOn(button.dataset.tryon);
+});
+
+document.getElementById("tryOnPhoto").addEventListener("change",event=>{
+  const file=event.target.files&&event.target.files[0];
+  if(!file)return;
+  if(!file.type.startsWith("image/")){toast("Choose an image file for the try-on preview");event.target.value="";return}
+  if(file.size>12*1024*1024){toast("Choose a photo smaller than 12 MB");event.target.value="";return}
+  clearTryOnPhoto();
+  tryOnPhotoUrl=URL.createObjectURL(file);
+  const photo=document.getElementById("tryOnPerson");
+  photo.onload=()=>{
+    photo.classList.remove("hidden");
+    document.getElementById("tryOnPlaceholder").classList.add("hidden");
+  };
+  photo.onerror=()=>{
+    clearTryOnPhoto();
+    toast("Could not open that photo. Please choose another.");
+  };
+  photo.src=tryOnPhotoUrl;
+  const product=products.find(item=>String(item.id)===tryOnProductId);
+  if(product){
+    const garment=document.getElementById("tryOnGarment");
+    garment.src=product.image||"";
+    garment.classList.remove("hidden");
+  }
+});
+
+document.getElementById("tryOnScale").addEventListener("input",event=>
+  document.getElementById("tryOnStage").style.setProperty("--tryon-scale",event.target.value+"%")
+);
+
+document.getElementById("tryOnPosition").addEventListener("input",event=>
+  document.getElementById("tryOnStage").style.setProperty("--tryon-top",event.target.value+"%")
+);
+
+document.getElementById("tryOnAdd").addEventListener("click",()=>{
+  const product=products.find(item=>String(item.id)===tryOnProductId);
+  if(!product||productStock(product)){toast("This fashion item is out of stock");return}
+  if(Number.isFinite(Number(product.quantity))&&(cart[product.id]||0)>=Number(product.quantity)){toast("That is all the available stock");return}
+  cart[product.id]=(cart[product.id]||0)+1;
+  saveCart();
+  logActivity("Fashion item added from photo try-on",product.name);
+  closePanels();
+  toast("Added to your cart");
+});
+  function appendSupportMessage(text,side="assistant",options={}){
+  const list=document.getElementById("supportChatMessages");
+  const bubble=document.createElement("div");
+  bubble.className="support-message "+(side==="customer"?"customer-message":"assistant-message");
+  bubble.textContent=text;
+  list.appendChild(bubble);
+
+  if(options.contact){
+    const links=document.createElement("div");
+    links.className="support-contact-links";
+
+    const email=document.createElement("a");
+    email.href="mailto:infinix.shoppeenow@gmail.com";
+    email.textContent="✉ infinix.shoppeenow@gmail.com";
+
+    const phone=document.createElement("a");
+    phone.href="https://wa.me/918643005054";
+    phone.target="_blank";
+    phone.rel="noopener noreferrer";
+    phone.textContent="WhatsApp: +91 86430 05054";
+
+    links.append(email,phone);
+    list.appendChild(links);
+  }
+
+  if(options.products&&options.products.length){
+    options.products.forEach(product=>{
+      const card=document.createElement("div");
+      card.className="support-product-card";
+
+      const title=document.createElement("b");
+      title.textContent=product.name;
+
+      const detail=document.createElement("small");
+      detail.textContent=(product.category||"")+" · "+money(product.price);
+
+      const button=document.createElement("button");
+      button.type="button";
+      button.textContent="View product";
+      button.dataset.supportProduct=String(product.id);
+
+      card.append(title,detail,button);
+      list.appendChild(card);
+    });
+  }
+
+  if(options.vouchers&&options.vouchers.length){
+    options.vouchers.forEach(voucher=>{
+      const card=document.createElement("div");
+      card.className="support-voucher-card";
+
+      const code=document.createElement("b");
+      code.textContent=voucher.code;
+
+      const amount=document.createElement("small");
+      amount.textContent="Save "+money(voucher.amount)+
+        (Number(voucher.minimum)>0
+          ?" on orders over "+money(voucher.minimum)
+          :"");
+
+      const button=document.createElement("button");
+      button.type="button";
+      button.textContent="Apply in cart";
+      button.dataset.supportVoucher=voucher.code;
+
+      card.append(code,amount,button);
+      list.appendChild(card);
+    });
+  }
+
+  list.scrollTop=list.scrollHeight;
+}
+
+function answerSupportQuestion(question){
+  const q=String(question||"").toLowerCase().trim();
+  const member=isPlusMember();
+
+  if(/\b(hi|hello|hey|namaste)\b/.test(q)){
+    return {
+      text:"Hello! Tell me what you’re shopping for or what you need help with."
+    };
+  }
+
+  if(/\b(return|returns|exchange|refund)\b/.test(q)){
+    return {
+      text:"Returns and exchanges can be requested within 7 calendar days after delivery. Keep the item unused with its accessories and original packaging, then contact support with your order number.",
+      contact:true
+    };
+  }
+
+  if(/\b(delivery|shipping|deliver|ship|arrive|free delivery)\b/.test(q)){
+    return {
+      text:"Orders of ₹499 or more qualify for free delivery. Standard delivery is estimated at 2 days; active Infinix Plus members receive a 1-day estimate. You’ll see the estimate in your order details."
+    };
+  }
+
+  if(/\b(track|tracking|order|orders|purchase)\b/.test(q)){
+    if(!currentUser||currentRole!=="customer"){
+      return {
+        text:"Please sign in to your customer account, then open Returns & Orders to see your order status and estimated delivery date."
+      };
+    }
+
+    const key=String(currentUser.username||currentUser.email||"").toLowerCase();
+
+    const mine=orderHistory
+      .filter(order=>String(order.customer||"").toLowerCase()===key)
+      .sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
+
+    if(!mine.length){
+      return {
+        text:"I couldn’t find an order on this account yet. After checkout, your order and estimated delivery date will appear under Returns & Orders."
+      };
+    }
+
+    const order=mine[0];
+    const date=order.estimatedDate
+      ?new Date(order.estimatedDate).toLocaleDateString("en-IN",{
+        day:"numeric",
+        month:"short",
+        year:"numeric"
+      })
+      :"not available";
+
+    return {
+      text:"Your latest order #"+order.id+
+        " is “"+(order.status||"Processing")+
+        "”. Estimated delivery: "+date+
+        ". Items: "+(order.items||[]).map(item=>item.name).join(", ")+"."
+    };
+  }
+
+  if(/\b(plus|premium|membership|member)\b/.test(q)){
+    return {
+      text:member
+        ?"Your Infinix Plus membership is active. It includes one-day delivery, free delivery, early offer access, priority support, and members-only deals. Visit the Plus section for your pass and voucher wallet."
+        :"Infinix Plus offers one-day delivery, free delivery, early offer access, priority support, and members-only deals. Visit the Plus section to view plans and request membership."
+    };
+  }
+
+  if(/\b(voucher|coupon|discount|offer)\b/.test(q)){
+    const available=vouchers.filter(v=>
+      v.active&&(!v.membersOnly||member)
+    );
+
+    return available.length
+      ?{
+        text:"Here are the active offers available to you. You can apply a voucher from your cart.",
+        vouchers:available
+      }
+      :{
+        text:member
+          ?"There are no active vouchers right now. Check the deals section again soon."
+          :"Some vouchers are reserved for Infinix Plus members. Join Plus to unlock member-only offers."
+      };
+  }
+
+  if(/\b(payment|pay|card|checkout)\b/.test(q)){
+    return {
+      text:"You can review delivery and payment details at checkout. This storefront currently does not process real card payments; don’t enter real card details. Contact support if you need help with an order.",
+      contact:true
+    };
+  }
+
+  if(/\b(account|sign in|login|password|register|create account)\b/.test(q)){
+    return {
+      text:"Tap Account & Lists to sign in or create an account. Use your username or email and password. Choose Customer during sign-up to shop and track orders."
+    };
+  }
+
+  if(/\b(seller|sell|list product|upload product)\b/.test(q)){
+    return {
+      text:"Create an account and choose Shopkeeper when signing up. Sellers can add products, specifications, prices, and stock from Shop Management."
+    };
+  }
+
+  const terms=q.split(/[^a-z0-9]+/).filter(word=>
+    word.length>2&&
+    !["find","show","want","need","looking","for","some","product","products","please","recommend","suggest","something"].includes(word)
+  );
+
+  const matches=products
+    .filter(product=>
+      !productStock(product)&&
+      terms.some(term=>
+        [
+          product.name,
+          product.category,
+          product.brand,
+          product.description,
+          product.color,
+          product.size,
+          ...Object.values(product.specifications||{})
+        ].join(" ").toLowerCase().includes(term)
+      )
+    )
+    .slice(0,3);
+
+  if(matches.length){
+    return {
+      text:"These listed items may match what you’re looking for:",
+      products:matches
+    };
+  }
+
+  if(/\b(recommend|suggest|looking for|shop|browse)\b/.test(q)){
+    const popular=products.filter(product=>!productStock(product)).slice(0,3);
+
+    if(popular.length){
+      return {
+        text:"Here are a few available products to get you started:",
+        products:popular
+      };
+    }
+  }
+
+  return {
+    text:"I’m sorry, I couldn’t confidently solve that. Please contact customer support and they’ll help you directly.",
+    contact:true
+  };
+}
+document.getElementById("supportChatForm").addEventListener("submit",event=>{
+  event.preventDefault();
+
+  const input=document.getElementById("supportChatInput");
+  const question=input.value.trim();
+
+  if(!question)return;
+
+  appendSupportMessage(question,"customer");
+  input.value="";
+
+  const answer=answerSupportQuestion(question);
+  appendSupportMessage(answer.text,"assistant",answer);
+});
+
+document.getElementById("supportChatMessages").addEventListener("click",event=>{
+  const productButton=event.target.closest("[data-support-product]");
+  const voucherButton=event.target.closest("[data-support-voucher]");
+
+  if(productButton){
+    const product=products.find(item=>
+      String(item.id)===productButton.dataset.supportProduct
+    );
+
+    if(product){
+      closePanels();
+      toast("Selected "+product.name);
+      document.getElementById("products").scrollIntoView({
+        behavior:"smooth"
+      });
+    }
+  }
+
+  if(voucherButton){
+    const voucher=vouchers.find(item=>
+      item.code===voucherButton.dataset.supportVoucher&&
+      item.active&&
+      (!item.membersOnly||isPlusMember())
+    );
+
+    if(voucher){
+      appliedVoucher=voucher.code;
+      localStorage.setItem("infinix-applied-voucher",appliedVoucher);
+      saveCart();
+      toast("Voucher selected: "+voucher.code);
+    }
+  }
+});
