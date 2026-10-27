@@ -1,4 +1,3 @@
-
 import hashlib
 import hmac
 import json
@@ -236,7 +235,8 @@ if path == "/api/logout":
             )
             return
 
-        if path == "/api/state":
+
+if path == "/api/state":
             user = current_user(self)
             state = data.get("state", data.get("appState", {}))
 
