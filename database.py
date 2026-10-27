@@ -1,4 +1,233 @@
-        if path == "/api/logout":
+
+import hashlib
+import hmac
+import json
+import os
+import secrets
+import sqlite3
+import time
+
+from http.cookies import SimpleCookie
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from urllib.parse import unquote, urlparse
+
+try:
+    from openpyxl import Workbook
+except ImportError:
+    Workbook = None
+
+
+# =========================
+# CONFIGURATION
+# =========================
+
+PORT = int(os.environ.get("PORT", "8000"))
+
+BASE_DIR = Path(__file__).resolve().parent
+
+DB_PATH = Path(
+    os.environ.get(
+        "INFINIX_DB_PATH",
+        str(BASE_DIR / "infinix_shopee.db")
+    )
+)
+
+EXCEL_PATH = Path(
+    os.environ.get(
+        "INFINIX_EXCEL_PATH",
+        str(BASE_DIR / "Infinix_Shopee_Database.xlsx")
+    )
+)
+
+FRONTEND_ORIGIN = os.environ.get(
+    "FRONTEND_ORIGIN",
+    "https://infinix-shoppe.onrender.com"
+).rstrip("/")
+
+SESSION_SECRET = os.environ.get("SESSION_SECRET", "")
+
+if len(SESSION_SECRET) < 32:
+    raise RuntimeError(
+        "Set SESSION_SECRET in Render environment variables "
+        "to a private random value of at least 32 characters."
+    )
+
+ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "Rockstar")
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
+
+SESSION_COOKIE = "infinix_session"
+SESSION_DURATION = 7 * 24 * 60 * 60
+
+
+# =========================
+# DATABASE INITIALIZATION
+# =========================
+
+def get_db():
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+    connection = sqlite3.connect(
+        str(DB_PATH),
+        timeout=30
+    )
+
+    connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA foreign_keys = ON")
+
+    return connection
+
+
+def init_db():
+    with get_db() as db:
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS accounts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT NOT NULL UNIQUE,
+                email TEXT NOT NULL UNIQUE,
+                password_hash TEXT NOT NULL,
+                salt TEXT NOT NULL,
+                role TEXT NOT NULL DEFAULT 'customer',
+                created_at INTEGER NOT NULL
+            )
+        """)
+
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS sessions (
+                token_hash TEXT PRIMARY KEY,
+                account_id INTEGER NOT NULL,
+                expires_at INTEGER NOT NULL,
+                FOREIGN KEY (account_id)
+                    REFERENCES accounts(id)
+                    ON DELETE CASCADE
+            )
+        """)
+
+        db.commit()
+
+
+# =========================
+# PASSWORD SECURITY
+# =========================
+
+def hash_password(password, salt=None):
+    if salt is None:
+        salt = secrets.token_hex(16)
+
+    password_hash = hashlib.pbkdf2_hmac(
+        "sha256",
+        password.encode("utf-8"),
+        bytes.fromhex(salt),
+        310000
+    ).hex()
+
+    return salt, password_hash
+
+
+def verify_password(password, salt, stored_hash):
+    _, calculated_hash = hash_password(password, salt)
+
+    return hmac.compare_digest(
+        calculated_hash,
+        stored_hash
+    )
+
+
+# =========================
+# SESSION HELPERS
+# =========================
+
+def hash_session_token(token):
+    return hmac.new(
+        SESSION_SECRET.encode("utf-8"),
+        token.encode("utf-8"),
+        hashlib.sha256
+    ).hexdigest()
+
+
+def create_session(account_id):
+    token = secrets.token_urlsafe(32)
+    token_hash = hash_session_token(token)
+    expires_at = int(time.time()) + SESSION_DURATION
+
+    with get_db() as db:
+        db.execute(
+            """
+            INSERT INTO sessions
+                (token_hash, account_id, expires_at)
+            VALUES (?, ?, ?)
+            """,
+            (token_hash, account_id, expires_at)
+        )
+        db.commit()
+
+    return token
+
+
+def get_session_account(token):
+    if not token:
+        return None
+
+    token_hash = hash_session_token(token)
+    now = int(time.time())
+
+    with get_db() as db:
+        row = db.execute(
+            """
+            SELECT accounts.*
+            FROM sessions
+            JOIN accounts
+                ON accounts.id = sessions.account_id
+            WHERE sessions.token_hash = ?
+              AND sessions.expires_at > ?
+            """,
+            (token_hash, now)
+        ).fetchone()
+
+    return dict(row) if row else None
+
+
+# =========================
+# EXCEL EXPORT
+# =========================
+
+def export_database_to_excel():
+    if Workbook is None:
+        return
+
+    EXCEL_PATH.parent.mkdir(
+        parents=True,
+        exist_ok=True
+    )
+
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Accounts"
+
+    with get_db() as db:
+        rows = db.execute(
+            """
+            SELECT id, username, email, role, created_at
+            FROM accounts
+            ORDER BY id
+            """
+        ).fetchall()
+
+    sheet.append([
+        "ID",
+        "Username",
+        "Email",
+        "Role",
+        "Created At"
+    ])
+
+    for row in rows:
+        sheet.append(list(row))
+
+    workbook.save(str(EXCEL_PATH))
+
+
+if path == "/api/logout":
             delete_session(self)
             self.send_json(
                 200,
