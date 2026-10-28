@@ -433,7 +433,12 @@ class ShopHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/login":
-            username = str(data.get("username", data.get("email", ""))).strip()
+            username = str(
+            data.get("identifier")
+            or data.get("username")
+            or data.get("email")
+            or ""
+            ).strip()
             password = str(data.get("password", ""))
             if not username or not password:
                 self._send_json(400, {"ok": False, "error": "Enter your username/email and password."})
