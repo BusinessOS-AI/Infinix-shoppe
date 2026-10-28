@@ -228,7 +228,67 @@ function escapeAdminText(value){return String(value??"").replace(/[&<>"']/g,char
 function updateDeliveryLocation(){deliveryLocation={...defaultLocations.IN,...(deliveryLocations.IN||{})};document.getElementById("deliveryAddress").textContent=[deliveryLocation.city,deliveryLocation.state,deliveryLocation.postal].filter(Boolean).join(" ");document.getElementById("freeDeliveryText").textContent=isPlusMember()?"Infinix Plus members get free delivery on every order":"Free delivery on orders of "+moneyWhole(499)+" or more"}
 function fillCheckoutAddress(){const form=document.getElementById("checkoutForm");["street","landmark","city","state","postal"].forEach(key=>{form.elements[key].value=deliveryLocation[key]||""})}
 function applyCountry(){country="IN";localStorage.setItem("infinix-country","IN");updateDeliveryLocation();renderProducts();renderCart()}
-function switchRole(role){currentRole=role;localStorage.setItem("infinix-role",role);const customer=role==="customer";document.getElementById("dashboard").classList.toggle("hidden",customer);document.getElementById("popular").classList.toggle("hidden",!customer);document.querySelector(".categories").classList.toggle("hidden",!customer);document.querySelector(".deals").classList.toggle("hidden",!customer);document.querySelector(".newsletter").classList.toggle("hidden",!customer);document.getElementById("cartBtn").style.display=customer?"":"none";document.getElementById("ordersBtn").style.display=customer?"":"none";document.getElementById("dashboardTitle").innerHTML=role==="admin"?'Admin <em>control center.</em>':'Manage your <em>store.</em>';document.getElementById("dashboardKicker").textContent=role==="admin"?"ADMINISTRATION":"SELLER STUDIO";renderProducts();renderCart();updateDeliveryLocation();renderPlusMembership();if(!customer)renderDashboard()}
+function switchRole(role) {
+    if (!["admin", "shopkeeper", "customer"].includes(role)) {
+        toast("Invalid account role.");
+        return;
+    }
+
+    if (!currentUser || currentUser.role !== role) {
+        toast("Please sign in with the correct account.");
+        return;
+    }
+
+    currentRole = role;
+    localStorage.setItem("infinix-role", role);
+
+    const customer = role === "customer";
+
+    document.getElementById("dashboard")
+        .classList.toggle("hidden", customer);
+
+    document.getElementById("popular")
+        .classList.toggle("hidden", !customer);
+
+    document.querySelector(".categories")
+        .classList.toggle("hidden", !customer);
+
+    document.querySelector(".deals")
+        .classList.toggle("hidden", !customer);
+
+    document.querySelector(".newsletter")
+        .classList.toggle("hidden", !customer);
+
+    document.getElementById("cartBtn").style.display =
+        customer ? "" : "none";
+
+    document.getElementById("ordersBtn").style.display =
+        customer ? "" : "none";
+
+    const titles = {
+        admin: "Admin <em>control center.</em>",
+        shopkeeper: "Seller <em>studio.</em>",
+        customer: "Welcome to <em>Infinix Shopee.</em>"
+    };
+
+    document.getElementById("dashboardTitle").innerHTML =
+        titles[role];
+
+    document.getElementById("dashboardKicker").textContent = {
+        admin: "ADMINISTRATION",
+        shopkeeper: "SELLER STUDIO",
+        customer: "SHOPPING"
+    }[role];
+
+    renderProducts();
+    renderCart();
+    updateDeliveryLocation();
+    renderPlusMembership();
+
+    if (!customer) {
+        renderDashboard();
+    }
+}
 function renderDashboard(){const box=document.getElementById("dashboardContent");if(currentRole==="shopkeeper"){const ownProducts=products.filter(p=>String(p.seller||"").toLowerCase()===String(currentUser&&(currentUser.username||currentUser.email)||"").toLowerCase());box.innerHTML='<div class="manager-grid"><div class="manager-card"><h3>Upload a product</h3><p>Publish an item for customers to discover and buy.</p><form id="productForm" class="product-form"><label>Product name<input name="name" required placeholder="e.g. Cotton everyday bag"></label><div class="form-row"><label>Brand<input name="brand" maxlength="60" placeholder="e.g. Nike"></label><label>Size<input name="size" maxlength="30" placeholder="e.g. M, 8, 256 GB"></label></div><div class="form-row"><label>Color<input name="color" maxlength="40" placeholder="e.g. Black"></label><label>Material<input name="material" maxlength="50" placeholder="e.g. Cotton"></label></div><label>Product specifications / description<textarea name="description" rows="4" placeholder="Add features, dimensions, model, material, or other product details"></textarea></label><div class="form-row"><label>Category<select name="category"><option>Tech</option><option>Home</option><option>Fashion</option><option>Beauty</option><option>Other</option></select></label><label>Price<input name="price" type="number" min="0.01" step="0.01" required placeholder="0.00"></label></div><div class="form-row"><label>Compare at price<input name="old" type="number" min="0" step="0.01" placeholder="Optional"></label><label>Badge<input name="badge" placeholder="NEW ARRIVAL"></label></div><div class="form-row"><label>Quantity<input name="quantity" type="number" min="0" step="1" value="1" required></label><label class="stock-toggle"><input name="outOfStock" type="checkbox"> Mark out of stock</label></div><label>Image URL<input name="image" type="url" placeholder="https://..."></label><button class="primary-btn">Publish product <span>→</span></button></form></div><div class="manager-card"><h3>Your listings <span class="count-pill">'+ownProducts.length+'</span></h3><div class="listing-list">'+ownProducts.map(p=>'<div class="listing seller-stock-row"><img src="'+p.image+'"><span><b>'+p.name+'</b><small>'+p.category+' · '+money(p.price)+' · '+(productStock(p)?'Out of stock':(Number.isFinite(Number(p.quantity))?p.quantity+' in stock':'Stock not set'))+'</small></span><label class="stock-edit">Qty<input type="number" min="0" step="1" value="'+(Number.isFinite(Number(p.quantity))?p.quantity:1)+'" data-stock-quantity="'+p.id+'"></label><label class="stock-toggle"><input type="checkbox" data-stock-out="'+p.id+'" '+(productStock(p)?'checked':'')+'> Out of stock</label><button class="primary-btn stock-save" data-stock-save="'+p.id+'">Save stock</button><button class="remove-product" data-seller-delete="'+p.id+'">Remove</button></div>').join("")+'</div></div></div>';box.querySelectorAll("[data-seller-delete]").forEach(b=>b.onclick=()=>{const product=products.find(p=>p.id===Number(b.dataset.sellerDelete));const owner=String(currentUser&&(currentUser.username||currentUser.email)||"").toLowerCase();if(!product||String(product.seller||"").toLowerCase()!==owner){toast("You can only remove your own products");return}logActivity("Seller removed product",product.name);products=products.filter(p=>p.id!==Number(b.dataset.sellerDelete));localStorage.setItem("infinix-products",JSON.stringify(products));renderProducts();renderDashboard();toast(removeCartProduct(product,false)?"Product removed. It was also removed from your cart.":"Product removed from your listings")});box.querySelectorAll("[data-stock-save]").forEach(b=>b.onclick=()=>{const product=products.find(p=>String(p.id)===b.dataset.stockSave),owner=String(currentUser&&(currentUser.username||currentUser.email)||"").toLowerCase();if(!product||String(product.seller||"").toLowerCase()!==owner){toast("You can only update your own products");return}const quantityInput=box.querySelector(`[data-stock-quantity="${b.dataset.stockSave}"]`),outInput=box.querySelector(`[data-stock-out="${b.dataset.stockSave}"]`),quantity=Math.max(0,Math.floor(Number(quantityInput.value)||0));product.quantity=quantity;product.outOfStock=outInput.checked||quantity===0;const removed=productStock(product)?removeCartProduct(product,false):false;localStorage.setItem("infinix-products",JSON.stringify(products));logActivity("Seller updated product stock",product.name+" · "+(productStock(product)?"Out of stock":quantity+" available"));renderProducts();renderDashboard();toast(removed?"Stock updated. This item was removed from your cart.":"Stock updated")});document.getElementById("productForm").onsubmit=e=>{e.preventDefault();const f=new FormData(e.target),name=f.get("name").trim(),price=Number(f.get("price")),image=f.get("image")||"https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=700&q=80";const quantity=Math.max(0,Math.floor(Number(f.get("quantity"))||0)),outOfStock=f.get("outOfStock")==="on"||quantity===0;products.unshift({id:Date.now(),name,description:f.get("description").trim(),brand:f.get("brand").trim(),size:f.get("size").trim(),color:f.get("color").trim(),material:f.get("material").trim(),specifications:{brand:f.get("brand").trim(),size:f.get("size").trim(),color:f.get("color").trim(),material:f.get("material").trim()},category:f.get("category"),price,old:Number(f.get("old"))||price,rating:"New",reviews:"0",badge:f.get("badge")||"NEW ARRIVAL",image,seller:currentUser?(currentUser.username||currentUser.email):"",quantity,outOfStock});localStorage.setItem("infinix-products",JSON.stringify(products));logActivity("Product listed",name+" · "+f.get("category"));renderProducts();renderDashboard();toast("Your product is now listed")}}else{box.innerHTML='<div class="admin-metrics"><div><small>Products</small><b>'+products.length+'</b></div><div><small>Shopkeepers</small><b>1</b></div><div><small>Orders</small><b>0</b></div><div><small>Country pricing</small><b>'+ "India · ₹"+'</b></div></div><div class="manager-card admin-products"><h3>All products <span class="count-pill">Admin controls</span></h3><div class="listing-list">'+products.map(p=>'<div class="listing"><img src="'+p.image+'"><span><b>'+p.name+'</b><small>'+p.category+' · '+money(p.price)+'</small></span><button class="remove-product" data-delete-product="'+p.id+'">Remove</button></div>').join("")+'</div></div>';box.querySelectorAll("[data-delete-product]").forEach(b=>b.onclick=()=>{products=products.filter(p=>p.id!==Number(b.dataset.deleteProduct));localStorage.setItem("infinix-products",JSON.stringify(products));renderProducts();renderDashboard();toast("Product removed")})}}
 
 document.getElementById("locationBtn").addEventListener("click",()=>{updateDeliveryLocation();document.getElementById("locationCountryLabel").textContent="Selected country: "+countryNames.of(country);document.getElementById("locationStreet").value=deliveryLocation.street||"";document.getElementById("locationCity").value=deliveryLocation.city||"";document.getElementById("locationState").value=deliveryLocation.state||"";document.getElementById("locationLandmark").value=deliveryLocation.landmark||"";document.getElementById("locationPostal").value=deliveryLocation.postal||"";openPanel(document.getElementById("locationModal"))});
