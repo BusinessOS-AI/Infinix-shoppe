@@ -236,7 +236,7 @@ document.getElementById("locationForm").addEventListener("submit",e=>{e.preventD
 document.querySelectorAll("[data-auth]").forEach(b=>b.addEventListener("click",()=>{const creating=b.dataset.auth==="create",role=authRoleOverride||document.getElementById("authRole").value;document.getElementById("authRoleField").classList.toggle("hidden",!creating);document.getElementById("identifierField").classList.toggle("hidden",creating);document.getElementById("usernameField").classList.toggle("hidden",!creating);document.getElementById("emailField").classList.toggle("hidden",!creating);document.getElementById("nameField").classList.toggle("hidden",!creating);document.getElementById("identifierField").querySelector("input").required=!creating;document.getElementById("usernameField").querySelector("input").required=creating;document.getElementById("emailField").querySelector("input").required=creating;document.getElementById("nameField").querySelector("input").required=creating;document.getElementById("authTitle").textContent=creating?"Create your account.":"Good to see you.";document.getElementById("authSub").textContent=creating?"Choose a username and add your email to create an account.":"Sign in with your username or email."}));
 document.getElementById("accountBtn").addEventListener("click",()=>{if(currentUser)return;authRoleOverride=null;document.querySelector('[data-auth="signin"]').click();document.getElementById("authRoleField").classList.add("hidden");document.getElementById("identifierField").querySelector("input").required=true;document.getElementById("usernameField").querySelector("input").required=false;document.getElementById("emailField").querySelector("input").required=false;document.getElementById("nameField").querySelector("input").required=false});
 if(currentUser){document.getElementById("helloText").textContent="Hello, "+(currentUser.name||currentUser.username);document.getElementById("accountLabel").textContent="Your account";document.getElementById("logoutBtn").classList.remove("hidden")}
-document.getElementById("logoutBtn").addEventListener("click",async()=>{try{await fetch("/api/logout",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:"{}"})}catch{}window.__infinixSession=false;localStorage.removeItem("infinix-user");localStorage.removeItem("infinix-role");location.reload()});
+document.getElementById("logoutBtn").addEventListener("click",async()=>{try{await fetch("https://infinix-shoppe-backend.onrender.com/api/logout",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:"{}"})}catch{}window.__infinixSession=false;localStorage.removeItem("infinix-user");localStorage.removeItem("infinix-role");location.reload()});
 function setTheme(theme){const dark=theme==="dark";document.body.classList.toggle("dark-theme",dark);localStorage.setItem("infinix-theme",dark?"dark":"light");const button=document.getElementById("themeToggle");button.innerHTML=dark?'☀ <span>Theme: Light</span>':'☾ <span>Theme: Dark</span>';button.setAttribute("aria-label",dark?"Switch to light theme":"Switch to dark theme")}
 document.getElementById("themeToggle").addEventListener("click",()=>setTheme(document.body.classList.contains("dark-theme")?"light":"dark"));
 setTheme(localStorage.getItem("infinix-theme")||"light");
@@ -252,14 +252,14 @@ document.getElementById("authForm").onsubmit=async e=>{
     ?{username:String(data.get("username")||"").trim(),email:String(data.get("email")||"").trim().toLowerCase(),name:String(data.get("name")||"").trim(),password,role:requested}
     :{identifier:String(data.get("identifier")||"").trim(),password};
   try{
-    let response=await fetch(creating?"/api/register":"/api/login",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
+    let response=await fetch(creating ? `${API_BASE}/api/register` : `${API_BASE}/api/login`, {method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
     let result=await response.json();
     // One-time migration for accounts that only existed in this browser.
     if(!creating&&!response.ok){
       const legacy=accounts.find(account=>{const id=String(account.username||account.email||"").toLowerCase();return (id===payload.identifier.toLowerCase()||String(account.email||"").toLowerCase()===payload.identifier.toLowerCase())&&String(account.password||"")===password&&["customer","shopkeeper"].includes(account.role)});
       if(legacy){
         const migration={username:String(legacy.username||"").trim(),email:String(legacy.email||"").trim().toLowerCase(),name:String(legacy.name||legacy.username||"").trim(),password,role:legacy.role};
-        response=await fetch("/api/register",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify(migration)});
+        response=await fetch("https://infinix-shoppe-backend.onrender.com/api/register",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify(migration)});
         result=await response.json();
         if(response.ok){accounts=accounts.filter(account=>account!==legacy);localStorage.setItem("infinix-accounts",JSON.stringify(accounts));}
       }
@@ -323,7 +323,7 @@ function renderAdminDashboard(){
     const username=button.dataset.adminUser,account=accounts.find(item=>String(item.username||"")===username);if(!account)return;
     if(!confirm(`Remove the account “${account.username}”? Any products owned by this seller will also be removed. Existing order records will be retained.`))return;
     try{
-      const response=await fetch("/api/users/delete",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({username})});
+      const response=await fetch("https://infinix-shoppe-backend.onrender.com/api/users/delete",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({username})});
       const result=await response.json();if(!response.ok)throw new Error(result.error||"Could not remove user");
       const accountKeys=[account.username,account.email].filter(Boolean).map(value=>String(value).trim().toLowerCase());const key=accountKeys[0]||"";accounts=accounts.filter(item=>item.username!==account.username);
       let cartItemsRemoved=0;if(account.role==="shopkeeper"){const sellerProducts=products.filter(product=>String(product.seller||"").toLowerCase()===key);sellerProducts.forEach(product=>{if(removeCartProduct(product,false))cartItemsRemoved++});products=products.filter(product=>String(product.seller||"").toLowerCase()!==key);localStorage.setItem("infinix-products",JSON.stringify(products))}
