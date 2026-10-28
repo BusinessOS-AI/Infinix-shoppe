@@ -1,3 +1,4 @@
+const API_BASE = "https://infinix-shoppe-backend.onrender.com";
 const countryCurrency={IN:"INR"};
 const countryNames=new Intl.DisplayNames(["en"],{type:"region"});
 const savedCatalogVersion=localStorage.getItem("infinix-catalog-version");
