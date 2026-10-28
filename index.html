@@ -163,4 +163,41 @@
   document.body.appendChild(app);
 })();
 </script>
-</body></html>
+
+  <!-- Infinix Shopee: Location and Navigation -->
+<section id="storeMapSection" class="store-map-section">
+    <div class="store-map-heading">
+        <p class="map-kicker">YOUR LOCATION</p>
+        <h2>Find your way.</h2>
+        <p>View your selected delivery area or open directions.</p>
+    </div>
+
+    <div class="map-actions">
+        <button type="button" id="detectLocationBtn">
+            📍 Use my current location
+        </button>
+
+        <a
+            href="https://www.google.com/maps/search/?api=1&query=New+Delhi+110001"
+            target="_blank"
+            rel="noopener noreferrer"
+            id="openMapsLink">
+            Open Google Maps ↗
+        </a>
+    </div>
+
+    <p id="mapLocationStatus" aria-live="polite">
+        Default location: New Delhi 110001
+    </p>
+
+    <iframe
+        id="storeMap"
+        title="Infinix Shopee location map"
+        src="https://maps.google.com/maps?q=New%20Delhi%20110001&t=&z=13&ie=UTF8&iwloc=&output=embed"
+        loading="lazy"
+        referrerpolicy="no-referrer-when-downgrade"
+        allowfullscreen>
+    </iframe>
+</section>
+</body>
+</html>
