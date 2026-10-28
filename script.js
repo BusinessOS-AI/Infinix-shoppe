@@ -252,7 +252,7 @@ document.getElementById("authForm").onsubmit=async e=>{
     ?{username:String(data.get("username")||"").trim(),email:String(data.get("email")||"").trim().toLowerCase(),name:String(data.get("name")||"").trim(),password,role:requested}
     :{identifier:String(data.get("identifier")||"").trim(),password};
   try{
-    let response=await fetch(creating ? `${API_BASE}/api/register` : `${API_BASE}/api/login`, {method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
+    let response=await fetch(creating ? `${API_BASE}/api/register` : `${API_BASE}/api/login`, {method:"POST",credentials: "include",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
     let result=await response.json();
     // One-time migration for accounts that only existed in this browser.
     if(!creating&&!response.ok){
