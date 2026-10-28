@@ -549,3 +549,61 @@ document.getElementById("plusConfirmPayment").addEventListener("click",()=>{
 renderPlusMembership();
 
 window.addEventListener("storage",event=>{if(event.key!=="infinix-products")return;try{products=JSON.parse(event.newValue||"[]");const unavailable=Object.keys(cart).filter(id=>{const item=products.find(p=>String(p.id)===String(id));return !item||productStock(item)});unavailable.forEach(id=>delete cart[id]);if(unavailable.length)localStorage.setItem("shoply-cart",JSON.stringify(cart));renderProducts();renderCart();if(unavailable.length)toast("An unavailable item was removed from your cart.")}catch(error){console.error("Could not sync product updates",error)}});
+
+// Location and Google Maps navigation
+const detectLocationBtn =
+    document.getElementById("detectLocationBtn");
+
+if (detectLocationBtn) {
+    detectLocationBtn.addEventListener("click", () => {
+        const status =
+            document.getElementById("mapLocationStatus");
+
+        if (!navigator.geolocation) {
+            status.textContent =
+                "Location is not supported by this browser.";
+            return;
+        }
+
+        status.textContent =
+            "Requesting permission to access your location…";
+
+        navigator.geolocation.getCurrentPosition(
+            position => {
+                const latitude = position.coords.latitude;
+                const longitude = position.coords.longitude;
+
+                const mapQuery = `${latitude},${longitude}`;
+
+                document.getElementById("storeMap").src =
+                    "https://maps.google.com/maps?q=" +
+                    encodeURIComponent(mapQuery) +
+                    "&z=15&output=embed";
+
+                document.getElementById("openMapsLink").href =
+                    "https://www.google.com/maps/dir/?api=1&destination=" +
+                    encodeURIComponent(mapQuery);
+
+                status.textContent =
+                    "Your current location is displayed on the map.";
+
+            },
+            error => {
+                const messages = {
+                    1: "Location permission was denied. You can still open Google Maps.",
+                    2: "Your location could not be determined.",
+                    3: "Location request timed out. Please try again."
+                };
+
+                status.textContent =
+                    messages[error.code] ||
+                    "Unable to retrieve your location.";
+            },
+            {
+                enableHighAccuracy: true,
+                timeout: 10000,
+                maximumAge: 60000
+            }
+        );
+    });
+}
