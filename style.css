@@ -141,3 +141,83 @@
 /* Infinix customer-support chat */
 .support-chat{position:fixed;right:22px;bottom:20px;z-index:90;font-family:var(--body)}.support-chat-launcher{display:flex;align-items:center;gap:8px;margin-left:auto;padding:12px 17px;border:0;border-radius:28px;background:var(--green);color:#fff;box-shadow:0 8px 24px #11271d40;font:700 12px var(--body);cursor:pointer}.support-chat-launcher>span{display:grid;place-items:center;width:22px;height:22px;border-radius:50%;background:var(--lime);color:var(--green);font-size:13px}.support-chat-launcher:hover{background:#1e7054;transform:translateY(-1px)}.support-chat-panel{position:absolute;right:0;bottom:62px;display:none;flex-direction:column;width:min(370px,calc(100vw - 28px));height:min(560px,calc(100vh - 110px));overflow:hidden;border:1px solid var(--line);border-radius:14px;background:#fff;color:var(--ink);box-shadow:0 16px 60px #10251d35}.support-chat-panel.open{display:flex}.support-chat-head{display:flex;align-items:center;gap:10px;padding:14px;border-bottom:1px solid var(--line);background:#f5f8f0}.support-chat-avatar{display:grid;place-items:center;width:36px;height:36px;border-radius:50%;background:var(--lime);color:var(--green);font-size:20px;font-weight:800}.support-chat-head>span:nth-child(2){display:grid;gap:3px;flex:1}.support-chat-head b{font-size:12px}.support-chat-head small{color:var(--muted);font-size:10px}.support-chat-head button{width:30px;height:30px;border:0;border-radius:50%;background:transparent;color:var(--muted);font-size:22px;cursor:pointer}.support-chat-messages{display:flex;flex:1;flex-direction:column;gap:9px;overflow-y:auto;padding:14px;background:#fff}.support-message{max-width:90%;padding:10px 12px;border-radius:12px;font-size:11px;line-height:1.55;overflow-wrap:anywhere}.assistant-message{align-self:flex-start;border:1px solid var(--line);border-bottom-left-radius:3px;background:#f7f8f4;color:var(--ink)}.support-message.customer-message{align-self:flex-end;border:0;border-bottom-right-radius:3px;background:#145b45;color:#fff}.support-contact-links{display:grid;gap:6px;align-self:flex-start;max-width:94%;padding:10px 12px;border:1px solid #dbe6d4;border-radius:10px;background:#f5f8f0}.support-contact-links a{color:var(--green);font-size:11px;font-weight:700;text-decoration:none}.support-contact-links a:hover{text-decoration:underline}.support-product-card,.support-voucher-card{display:grid;grid-template-columns:1fr auto;gap:4px 10px;align-self:flex-start;width:94%;padding:10px;border:1px solid var(--line);border-radius:9px;background:#fff}.support-product-card b,.support-voucher-card b{font-size:11px}.support-product-card small,.support-voucher-card small{color:var(--muted);font-size:10px}.support-product-card button,.support-voucher-card button{grid-column:1/-1;justify-self:start;padding:6px 9px;border:0;border-radius:5px;background:var(--green);color:white;font:600 10px var(--body);cursor:pointer}.support-chat-quick{display:flex;gap:6px;overflow-x:auto;padding:8px 11px;border-top:1px solid var(--line)}.support-chat-quick button{flex:0 0 auto;padding:6px 9px;border:1px solid var(--line);border-radius:18px;background:#fff;color:var(--green);font:600 9px var(--body);white-space:nowrap;cursor:pointer}.support-chat-form{display:flex;gap:8px;padding:10px;border-top:1px solid var(--line);background:#fff}.support-chat-form input{min-width:0;flex:1;height:38px;padding:0 11px;border:1px solid var(--line);border-radius:20px;background:#fff;color:var(--ink);font:11px var(--body);outline:none}.support-chat-form input:focus{border-color:var(--green);box-shadow:0 0 0 2px #145b451c}.support-chat-form>button{width:38px;height:38px;border:0;border-radius:50%;background:var(--green);color:#fff;font-size:16px;cursor:pointer}.dark-theme .support-chat-panel,.dark-theme .support-chat-messages,.dark-theme .support-chat-form{background:#18211d;color:#e8eee9;border-color:#35433c}.dark-theme .support-chat-head,.dark-theme .assistant-message,.dark-theme .support-contact-links{background:#202a25;border-color:#3a4941;color:#e8eee9}.dark-theme .support-chat-form input,.dark-theme .support-chat-quick button,.dark-theme .support-product-card,.dark-theme .support-voucher-card{background:#202a25;border-color:#3a4941;color:#e8eee9}.dark-theme .support-contact-links a,.dark-theme .support-chat-quick button{color:#d8f378}.dark-theme .support-product-card small,.dark-theme .support-voucher-card small{color:#aab7af}
 @media(max-width:520px){.support-chat{right:12px;bottom:12px}.support-chat-panel{right:0;bottom:58px;height:min(72vh,560px);width:calc(100vw - 24px)}.support-chat-launcher{padding:10px 14px}}
+
+/* Infinix Shopee Location Map */
+.store-map-section {
+    max-width: 1200px;
+    margin: 48px auto;
+    padding: 28px;
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 18px;
+    color: #111827;
+}
+
+.store-map-heading .map-kicker {
+    color: #2563eb;
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 2px;
+}
+
+.store-map-heading h2 {
+    margin: 8px 0;
+    font-size: clamp(24px, 4vw, 36px);
+}
+
+.store-map-heading p {
+    line-height: 1.6;
+}
+
+.map-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin: 20px 0 12px;
+}
+
+.map-actions button,
+.map-actions a {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 12px 18px;
+    border: 0;
+    border-radius: 9px;
+    background: #2563eb;
+    color: #ffffff;
+    font: inherit;
+    font-weight: 700;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+#mapLocationStatus {
+    font-size: 14px;
+    color: #4b5563;
+}
+
+#storeMap {
+    display: block;
+    width: 100%;
+    height: 360px;
+    border: 0;
+    border-radius: 12px;
+    margin-top: 16px;
+}
+
+@media (max-width: 600px) {
+    .store-map-section {
+        margin: 24px 12px;
+        padding: 18px;
+    }
+
+    #storeMap {
+        height: 280px;
+    }
+
+    .map-actions > * {
+        width: 100%;
+        box-sizing: border-box;
+    }
+}
