@@ -303,8 +303,7 @@ setTheme(localStorage.getItem("infinix-theme")||"light");
 applyCountry();switchRole(currentRole);
 
 // Sign-in and account creation are verified by the Python server.
-document.getElementById("authForm").onsubmit=async e=>{
-  e.preventDefault();
+// Sign-in is handled by the Python backend below.
   const data=new FormData(e.target),creating=!document.getElementById("nameField").classList.contains("hidden");
   const requested=authRoleOverride||(document.getElementById("authRoleField").classList.contains("hidden")?"customer":document.getElementById("authRole").value);
   const password=String(data.get("password")||"");
