@@ -313,6 +313,51 @@ document.getElementById("authForm").onsubmit=async e=>{
     :{identifier:String(data.get("identifier")||"").trim(),password};
   try{
     const API_BASE = "https://infinix-shoppe-backend.onrender.com";
+    // INFINIX SHOPEE — BACKEND STATE SYNC
+async function loadBackendState() {
+  try {
+    const response = await fetch(`${API_BASE}/api/state`, {
+      method: "GET",
+      credentials: "include"
+    });
+
+    if (!response.ok) {
+      throw new Error("Could not load store data.");
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error("Backend state error:", error);
+    return null;
+  }
+}
+
+async function saveBackendState(state, userState = {}) {
+  try {
+    const response = await fetch(`${API_BASE}/api/state`, {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        state,
+        userState
+      })
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result.error || "Could not save store data.");
+    }
+
+    return true;
+  } catch (error) {
+    console.error("Backend save error:", error);
+    return false;
+  }
+}
 
 let response = await fetch(
   creating
