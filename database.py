@@ -1,560 +1,776 @@
-"""
-Infinix Shopee backend
-----------------------
-A small JSON API for the Infinix Shopee storefront.
 
-Render settings:
-  Build command: pip install -r requirements.txt
-  Start command: python database.py
-
-Environment variables recommended on Render:
-  FRONTEND_ORIGIN=https://infinix-shoppe.onrender.com
-  SESSION_SECRET=<a random secret of at least 32 characters>
-  ADMIN_USERNAME=Rockstar
-  ADMIN_PASSWORD=<set a strong private password>
-  INFINIX_DB_PATH=/var/data/infinix_shopee.db   (only if a persistent disk is mounted)
-  INFINIX_EXCEL_PATH=/var/data/Infinix_Shopee_Database.xlsx
-
-Important:
-- SQLite is the live database. The Excel workbook is a readable export/backup.
-- If you use a Render persistent disk, mount it at /var/data and use the paths above.
-- Set FRONTEND_ORIGIN to the exact origin of your deployed Static Site.
-"""
-
-from __future__ import annotations
-
+import os
+import json
+import sqlite3
 import hashlib
 import hmac
-import json
-import os
 import secrets
-import sqlite3
 import time
-from http.cookies import SimpleCookie
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import threading
 from pathlib import Path
-from urllib.parse import unquote, urlparse
+from datetime import datetime, timezone
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import urlsplit
 
-try:
-    from openpyxl import Workbook, load_workbook
-except ImportError:
-    Workbook = None
-    load_workbook = None
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill
 
-ROOT = Path(__file__).resolve().parent
-PORT = int(os.environ.get("PORT", "8000"))
-DB_PATH = Path(os.environ.get("INFINIX_DB_PATH", str(ROOT / "infinix_shopee.db")))
-EXCEL_PATH = Path(os.environ.get("INFINIX_EXCEL_PATH", str(ROOT / "Infinix_Shopee_Database.xlsx")))
-FRONTEND_ORIGIN = os.environ.get("FRONTEND_ORIGIN", "https://infinix-shoppe.onrender.com").rstrip("/")
-SESSION_SECRET = os.environ.get("SESSION_SECRET", "")
-ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "Rockstar").strip()
+# ==========================================
+# INFINIX SHOPEE CONFIGURATION
+# ==========================================
+
+BASE_DIR = Path(__file__).resolve().parent
+
+DB_FILE = Path(os.environ.get(
+    "INFINIX_DB_PATH",
+    str(BASE_DIR / "infinix_shopee.db")
+))
+
+EXCEL_FILE = Path(os.environ.get(
+    "INFINIX_EXCEL_PATH",
+    str(BASE_DIR / "infinix_shopee_database.xlsx")
+))
+
+ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "Rockstar")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
 
-SESSION_COOKIE = "infinix_session"
-SESSION_DAYS = 7
-MAX_BODY_BYTES = 2 * 1024 * 1024
+SESSION_SECRET = os.environ.get("SESSION_SECRET", "")
+FRONTEND_ORIGIN = os.environ.get("FRONTEND_ORIGIN", "").rstrip("/")
 
+PORT = int(os.environ.get("PORT", "8000"))
+SESSION_SECONDS = 7 * 24 * 60 * 60
+PBKDF2_ROUNDS = 310000
 
-def ensure_configuration() -> None:
-    if not SESSION_SECRET:
-        # Local development convenience. Set a stable secret in Render.
-        generated = secrets.token_urlsafe(48)
-        os.environ["SESSION_SECRET"] = generated
-        globals()["SESSION_SECRET"] = generated
-        print("WARNING: SESSION_SECRET was generated for this run. Set it in Render for stable sessions.")
-    if len(SESSION_SECRET) < 32:
-        raise RuntimeError("SESSION_SECRET must be at least 32 characters.")
-    if not ADMIN_PASSWORD:
-        # Avoid silently making an insecure production admin account.
-        if os.environ.get("RENDER"):
-            raise RuntimeError("Set ADMIN_PASSWORD in Render Environment variables.")
-        print("WARNING: ADMIN_PASSWORD is not set. Admin login will be unavailable until you set it.")
+LOCK = threading.RLock()
 
+DB_FILE.parent.mkdir(parents=True, exist_ok=True)
+EXCEL_FILE.parent.mkdir(parents=True, exist_ok=True)
 
-def connect_db() -> sqlite3.Connection:
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH, timeout=30)
+# ==========================================
+# DATABASE
+# ==========================================
+
+def connect_db():
+    conn = sqlite3.connect(DB_FILE, timeout=30)
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA foreign_keys=ON")
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE COLLATE NOCASE NOT NULL,
+            email TEXT UNIQUE COLLATE NOCASE NOT NULL,
+            name TEXT NOT NULL,
+            role TEXT NOT NULL,
+            salt TEXT NOT NULL,
+            password_hash TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )
+    """)
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS sessions (
+            token_hash TEXT PRIMARY KEY,
+            user_id INTEGER NOT NULL,
+            expires_at INTEGER NOT NULL
+        )
+    """)
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS app_state (
+            storage_key TEXT PRIMARY KEY,
+            value_json TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+    """)
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS user_state (
+            user_id INTEGER NOT NULL,
+            storage_key TEXT NOT NULL,
+            value_json TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY(user_id, storage_key)
+        )
+    """)
+
     return conn
 
 
-def init_db() -> None:
-    with connect_db() as db:
-        db.executescript(
-            """
-            CREATE TABLE IF NOT EXISTS app_state (
-                state_key TEXT PRIMARY KEY,
-                state_json TEXT NOT NULL,
-                updated_at REAL NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS user_state (
-                username TEXT PRIMARY KEY,
-                state_json TEXT NOT NULL,
-                updated_at REAL NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT NOT NULL UNIQUE COLLATE NOCASE,
-                email TEXT UNIQUE COLLATE NOCASE,
-                password_salt TEXT NOT NULL,
-                password_hash TEXT NOT NULL,
-                role TEXT NOT NULL DEFAULT 'customer',
-                created_at REAL NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS sessions (
-                token_hash TEXT PRIMARY KEY,
-                username TEXT NOT NULL COLLATE NOCASE,
-                expires_at REAL NOT NULL,
-                created_at REAL NOT NULL,
-                FOREIGN KEY(username) REFERENCES users(username) ON DELETE CASCADE
-            );
-            """
-        )
-        db.execute(
-            "INSERT OR IGNORE INTO app_state(state_key, state_json, updated_at) VALUES(?, ?, ?)",
-            ("main", "{}", time.time()),
-        )
-        db.commit()
+def now_iso():
+    return datetime.now(timezone.utc).isoformat()
 
 
-def hash_password(password: str, salt_hex: str | None = None) -> tuple[str, str]:
-    salt = bytes.fromhex(salt_hex) if salt_hex else secrets.token_bytes(16)
-    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, 310_000)
+# ==========================================
+# PASSWORD SECURITY
+# ==========================================
+
+def password_digest(password, salt=None):
+    salt = salt or secrets.token_bytes(16)
+
+    digest = hashlib.pbkdf2_hmac(
+        "sha256",
+        password.encode("utf-8"),
+        salt,
+        PBKDF2_ROUNDS
+    )
+
     return salt.hex(), digest.hex()
 
 
-def password_matches(password: str, salt_hex: str, digest_hex: str) -> bool:
-    _, candidate = hash_password(password, salt_hex)
-    return hmac.compare_digest(candidate, digest_hex)
+def verify_password(password, salt, expected):
+    try:
+        _, digest = password_digest(
+            password,
+            bytes.fromhex(salt)
+        )
+
+        return hmac.compare_digest(digest, expected)
+
+    except (ValueError, TypeError):
+        return False
 
 
-def token_digest(token: str) -> str:
-    return hashlib.sha256((SESSION_SECRET + token).encode("utf-8")).hexdigest()
+def token_digest(token):
+    return hmac.new(
+        SESSION_SECRET.encode("utf-8"),
+        token.encode("utf-8"),
+        hashlib.sha256
+    ).hexdigest()
 
 
-def safe_user(row: sqlite3.Row | None) -> dict | None:
-    if row is None:
-        return None
+# ==========================================
+# USERS AND SESSIONS
+# ==========================================
+
+def public_user(row):
     return {
+        "id": row["id"],
         "username": row["username"],
         "email": row["email"],
+        "name": row["name"],
         "role": row["role"],
-        "createdAt": row["created_at"],
+        "createdAt": row["created_at"]
     }
 
 
-def get_cookie_token(handler: BaseHTTPRequestHandler) -> str | None:
-    raw = handler.headers.get("Cookie", "")
-    cookie = SimpleCookie()
-    try:
-        cookie.load(raw)
-        morsel = cookie.get(SESSION_COOKIE)
-        return morsel.value if morsel else None
-    except Exception:
-        return None
-
-
-def current_user(handler: BaseHTTPRequestHandler) -> dict | None:
-    token = get_cookie_token(handler)
-    if not token:
-        return None
-    now = time.time()
-    with connect_db() as db:
-        row = db.execute(
-            """SELECT u.* FROM sessions s
-               JOIN users u ON u.username = s.username COLLATE NOCASE
-               WHERE s.token_hash = ? AND s.expires_at > ?""",
-            (token_digest(token), now),
-        ).fetchone()
-        db.execute("DELETE FROM sessions WHERE expires_at <= ?", (now,))
-        db.commit()
-    return safe_user(row)
-
-
-def create_session(username: str) -> str:
-    token = secrets.token_urlsafe(36)
-    now = time.time()
-    with connect_db() as db:
-        db.execute(
-            "INSERT INTO sessions(token_hash, username, expires_at, created_at) VALUES(?, ?, ?, ?)",
-            (token_digest(token), username, now + SESSION_DAYS * 86400, now),
+def create_admin():
+    if not ADMIN_USERNAME or len(ADMIN_PASSWORD) < 12:
+        raise RuntimeError(
+            "Configure ADMIN_USERNAME and ADMIN_PASSWORD "
+            "in Render environment variables."
         )
-        db.commit()
+
+    salt, digest = password_digest(ADMIN_PASSWORD)
+
+    with connect_db() as conn:
+        row = conn.execute(
+            "SELECT id FROM users WHERE role='admin' LIMIT 1"
+        ).fetchone()
+
+        if row:
+            conn.execute("""
+                UPDATE users
+                SET username=?, salt=?, password_hash=?
+                WHERE id=?
+            """, (
+                ADMIN_USERNAME,
+                salt,
+                digest,
+                row["id"]
+            ))
+        else:
+            conn.execute("""
+                INSERT INTO users
+                (username,email,name,role,salt,password_hash,created_at)
+                VALUES(?,?,?,?,?,?,?)
+            """, (
+                ADMIN_USERNAME,
+                "admin@infinix.invalid",
+                "Administrator",
+                "admin",
+                salt,
+                digest,
+                now_iso()
+            ))
+
+
+def issue_session(user_id):
+    token = secrets.token_urlsafe(40)
+
+    with connect_db() as conn:
+        conn.execute("""
+            INSERT INTO sessions(token_hash,user_id,expires_at)
+            VALUES(?,?,?)
+        """, (
+            token_digest(token),
+            user_id,
+            int(time.time()) + SESSION_SECONDS
+        ))
+
+        conn.execute(
+            "DELETE FROM sessions WHERE expires_at <= ?",
+            (int(time.time()),)
+        )
+
     return token
 
 
-def delete_session(handler: BaseHTTPRequestHandler) -> None:
-    token = get_cookie_token(handler)
-    if token:
-        with connect_db() as db:
-            db.execute("DELETE FROM sessions WHERE token_hash = ?", (token_digest(token),))
-            db.commit()
+def get_user(token):
+    if not token:
+        return None
+
+    with connect_db() as conn:
+        row = conn.execute("""
+            SELECT users.*
+            FROM sessions
+            JOIN users ON users.id=sessions.user_id
+            WHERE sessions.token_hash=?
+            AND sessions.expires_at>?
+        """, (
+            token_digest(token),
+            int(time.time())
+        )).fetchone()
+
+    return public_user(row) if row else None
 
 
-def export_excel() -> None:
-    """Export current app state and user records without exporting password hashes."""
-    if Workbook is None:
-        return
-    EXCEL_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with connect_db() as db:
-        state_rows = db.execute("SELECT state_key, state_json, updated_at FROM app_state").fetchall()
-        user_state_rows = db.execute("SELECT username, state_json, updated_at FROM user_state").fetchall()
-        user_rows = db.execute(
-            "SELECT username, email, role, created_at FROM users ORDER BY created_at DESC"
+# ==========================================
+# APPLICATION STATE
+# ==========================================
+
+PRIVATE_KEYS = {
+    "shoply-cart",
+    "shoply-wish",
+    "infinix-delivery-locations",
+    "infinix-applied-voucher",
+    "infinix-theme",
+    "infinix-country"
+}
+
+PUBLIC_KEYS = {
+    "infinix-products",
+    "infinix-vouchers",
+    "infinix-promotion-settings",
+    "infinix-plus-plan-prices"
+}
+
+ADMIN_KEYS = {
+    "infinix-vouchers",
+    "infinix-promotion-settings",
+    "infinix-plus-plan-prices",
+    "infinix-plus-members",
+    "infinix-activity-log"
+}
+
+
+def read_global():
+    with connect_db() as conn:
+        rows = conn.execute(
+            "SELECT storage_key,value_json FROM app_state"
         ).fetchall()
 
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "App State"
-    ws.append(["State Key", "JSON Data", "Updated At"])
-    for row in state_rows:
-        ws.append([row["state_key"], row["state_json"], row["updated_at"]])
-
-    ws2 = wb.create_sheet("User State")
-    ws2.append(["Username", "JSON Data", "Updated At"])
-    for row in user_state_rows:
-        ws2.append([row["username"], row["state_json"], row["updated_at"]])
-
-    ws3 = wb.create_sheet("Users")
-    ws3.append(["Username", "Email", "Role", "Created At"])
-    for row in user_rows:
-        ws3.append([row["username"], row["email"], row["role"], row["created_at"]])
-
-    for sheet in wb.worksheets:
-        sheet.freeze_panes = "A2"
-        sheet.auto_filter.ref = sheet.dimensions
-        for column in sheet.columns:
-            values = [len(str(cell.value or "")) for cell in column]
-            letter = column[0].column_letter
-            sheet.column_dimensions[letter].width = min(max(max(values, default=10) + 2, 12), 60)
-    temp_path = EXCEL_PATH.with_suffix(".tmp.xlsx")
-    wb.save(temp_path)
-    temp_path.replace(EXCEL_PATH)
+    return {r["storage_key"]: r["value_json"] for r in rows}
 
 
-class ShopHandler(BaseHTTPRequestHandler):
-    server_version = "InfinixShopeeAPI/1.0"
+def get_visible_state(user):
+    global_state = read_global()
+    result = {}
 
-    def log_message(self, fmt: str, *args) -> None:
-        # Keep useful request logs on Render without noisy tracebacks.
-        print("%s - %s" % (self.address_string(), fmt % args))
+    if not user:
+        allowed = PUBLIC_KEYS
 
-    def _origin_allowed(self) -> bool:
-        origin = self.headers.get("Origin")
-        if not origin:
-            return True  # local scripts/health checks may omit Origin
-        return origin.rstrip("/") == FRONTEND_ORIGIN
+    elif user["role"] == "admin":
+        allowed = set(global_state)
 
-    def _cors(self) -> None:
-        origin = self.headers.get("Origin")
-        if origin and origin.rstrip("/") == FRONTEND_ORIGIN:
-            self.send_header("Access-Control-Allow-Origin", FRONTEND_ORIGIN)
-            self.send_header("Access-Control-Allow-Credentials", "true")
-            self.send_header("Vary", "Origin")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
-        self.send_header("Cache-Control", "no-store")
+    else:
+        allowed = PUBLIC_KEYS | {"infinix-orders"}
 
-    def _send_json(self, status: int, payload: dict, extra_headers: dict | None = None) -> None:
-        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
-        self._cors()
-        if extra_headers:
-            for key, value in extra_headers.items():
-                self.send_header(key, value)
-        self.end_headers()
-        self.wfile.write(body)
+    for key in allowed:
+        if key in global_state:
+            result[key] = global_state[key]
 
-    def _read_json(self) -> dict:
-        try:
-            length = int(self.headers.get("Content-Length", "0"))
-        except ValueError:
-            raise ValueError("Invalid Content-Length.")
-        if length < 0 or length > MAX_BODY_BYTES:
-            raise ValueError("Request body is too large.")
-        raw = self.rfile.read(length) if length else b"{}"
-        try:
-            data = json.loads(raw.decode("utf-8"))
-        except (UnicodeDecodeError, json.JSONDecodeError):
-            raise ValueError("Request body must be valid JSON.")
-        if not isinstance(data, dict):
-            raise ValueError("JSON body must be an object.")
-        return data
+    if not user:
+        return result
 
-    def _set_session_cookie(self, token: str) -> str:
-        # Cross-origin frontend/backend deployments need SameSite=None; Secure.
-        return (
-            f"{SESSION_COOKIE}={token}; Path=/; HttpOnly; Secure; SameSite=None; "
-            f"Max-Age={SESSION_DAYS * 86400}"
+    with connect_db() as conn:
+        private = conn.execute("""
+            SELECT storage_key,value_json
+            FROM user_state
+            WHERE user_id=?
+        """, (user["id"],)).fetchall()
+
+    for row in private:
+        result[row["storage_key"]] = row["value_json"]
+
+    if user["role"] == "admin":
+        with connect_db() as conn:
+            accounts = conn.execute(
+                "SELECT * FROM users ORDER BY created_at"
+            ).fetchall()
+
+        result["infinix-accounts"] = json.dumps(
+            [public_user(a) for a in accounts]
         )
 
-    def _clear_session_cookie(self) -> str:
-        return f"{SESSION_COOKIE}=; Path=/; HttpOnly; Secure; SameSite=None; Max-Age=0"
+    return result
 
-    def do_OPTIONS(self) -> None:
-        if not self._origin_allowed():
-            self._send_json(403, {"ok": False, "error": "Origin not allowed."})
-            return
-        self.send_response(204)
-        self._cors()
-        self.send_header("Content-Length", "0")
-        self.end_headers()
 
-    def do_GET(self) -> None:
-        path = urlparse(self.path).path
+def save_state(payload, user):
+    if not isinstance(payload, dict) or len(payload) > 100:
+        raise ValueError("Invalid state")
 
-        if path == "/api/health":
-            self._send_json(200, {"ok": True, "service": "infinix-shopee-backend"})
-            return
+    timestamp = now_iso()
 
-        if path.startswith("/api/"):
-            if not self._origin_allowed():
-                self._send_json(403, {"ok": False, "error": "Origin not allowed. Check FRONTEND_ORIGIN."})
-                return
+    with connect_db() as conn:
+        for key, value in payload.items():
 
-            if path == "/api/session":
-                user = current_user(self)
-                self._send_json(200, {"ok": True, "user": user, "authenticated": user is not None})
-                return
+            if not isinstance(key, str):
+                continue
 
-            if path == "/api/state":
-                user = current_user(self)
-                with connect_db() as db:
-                    row = db.execute(
-                        "SELECT state_json FROM app_state WHERE state_key = 'main'"
-                    ).fetchone()
-                    app_state = json.loads(row["state_json"]) if row else {}
-                    user_row = None
-                    if user:
-                        user_row = db.execute(
-                            "SELECT state_json FROM user_state WHERE username = ? COLLATE NOCASE",
-                            (user["username"],),
-                        ).fetchone()
-                self._send_json(
-                    200,
-                    {
-                        "ok": True,
-                        "state": app_state,
-                        "userState": json.loads(user_row["state_json"]) if user_row else {},
-                        "user": user,
-                    },
+            if not isinstance(value, str) or len(value) > 2000000:
+                continue
+
+            if key == "infinix-accounts":
+                continue
+
+            if key in PRIVATE_KEYS:
+                conn.execute("""
+                    INSERT INTO user_state
+                    (user_id,storage_key,value_json,updated_at)
+                    VALUES(?,?,?,?)
+                    ON CONFLICT(user_id,storage_key)
+                    DO UPDATE SET
+                    value_json=excluded.value_json,
+                    updated_at=excluded.updated_at
+                """, (
+                    user["id"],
+                    key,
+                    value,
+                    timestamp
+                ))
+
+            elif user["role"] == "admin":
+                conn.execute("""
+                    INSERT INTO app_state
+                    (storage_key,value_json,updated_at)
+                    VALUES(?,?,?)
+                    ON CONFLICT(storage_key)
+                    DO UPDATE SET
+                    value_json=excluded.value_json,
+                    updated_at=excluded.updated_at
+                """, (key, value, timestamp))
+
+
+# ==========================================
+# EXCEL DATABASE EXPORT
+# ==========================================
+
+def export_excel():
+    with LOCK:
+        book = Workbook()
+
+        sheet = book.active
+        sheet.title = "App Data"
+
+        sheet.append([
+            "Data Key",
+            "Saved Data",
+            "Updated At"
+        ])
+
+        with connect_db() as conn:
+            states = conn.execute(
+                "SELECT * FROM app_state"
+            ).fetchall()
+
+            users = conn.execute("""
+                SELECT username,email,name,role,created_at
+                FROM users
+            """).fetchall()
+
+        for row in states:
+            sheet.append([
+                row["storage_key"],
+                row["value_json"],
+                row["updated_at"]
+            ])
+
+        users_sheet = book.create_sheet("Users")
+
+        users_sheet.append([
+            "Username",
+            "Email",
+            "Name",
+            "Role",
+            "Created At"
+        ])
+
+        for row in users:
+            users_sheet.append(list(row))
+
+        for ws in book.worksheets:
+            ws.freeze_panes = "A2"
+
+            for cell in ws[1]:
+                cell.font = Font(
+                    bold=True,
+                    color="FFFFFF"
                 )
-                return
+                cell.fill = PatternFill(
+                    "solid",
+                    fgColor="155E4B"
+                )
 
-            self._send_json(404, {"ok": False, "error": "API route not found."})
-            return
+            for column in ws.columns:
+                width = max(
+                    len(str(cell.value or ""))
+                    for cell in column
+                )
+                ws.column_dimensions[
+                    column[0].column_letter
+                ].width = min(max(width + 2, 14), 45)
 
-        # Serve frontend files too when the backend folder contains them.
-        relative = unquote(path.lstrip("/")) or "index.html"
-        requested = (ROOT / relative).resolve()
-        try:
-            requested.relative_to(ROOT.resolve())
-        except ValueError:
-            self.send_error(403)
-            return
-        if not requested.is_file():
-            self.send_error(404)
-            return
-        content_type = {
-            ".html": "text/html; charset=utf-8",
-            ".css": "text/css; charset=utf-8",
-            ".js": "application/javascript; charset=utf-8",
-            ".json": "application/json; charset=utf-8",
-            ".svg": "image/svg+xml",
-            ".png": "image/png",
-            ".jpg": "image/jpeg",
-            ".jpeg": "image/jpeg",
-            ".webp": "image/webp",
-            ".ico": "image/x-icon",
-        }.get(requested.suffix.lower(), "application/octet-stream")
-        body = requested.read_bytes()
-        self.send_response(200)
-        self.send_header("Content-Type", content_type)
+        temp = EXCEL_FILE.with_suffix(".tmp.xlsx")
+        book.save(temp)
+        os.replace(temp, EXCEL_FILE)
+
+
+# ==========================================
+# HTTP HANDLER
+# ==========================================
+
+class ShopHandler(BaseHTTPRequestHandler):
+
+    def send_json(self, status, data, cookie=None, clear=False):
+        body = json.dumps(data).encode("utf-8")
+
+        self.send_response(status)
+        self.send_header(
+            "Content-Type",
+            "application/json; charset=utf-8"
+        )
         self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+
+        if FRONTEND_ORIGIN:
+            self.send_header(
+                "Access-Control-Allow-Origin",
+                FRONTEND_ORIGIN
+            )
+            self.send_header(
+                "Access-Control-Allow-Credentials",
+                "true"
+            )
+            self.send_header(
+                "Vary",
+                "Origin"
+            )
+
+        if cookie:
+            self.send_header(
+                "Set-Cookie",
+                "infinix_session=" + cookie +
+                "; Path=/; HttpOnly; Secure; SameSite=None; Max-Age=" +
+                str(SESSION_SECONDS)
+            )
+
+        if clear:
+            self.send_header(
+                "Set-Cookie",
+                "infinix_session=; Path=/; HttpOnly; Secure; SameSite=None; Max-Age=0"
+            )
+
         self.end_headers()
         self.wfile.write(body)
 
-    def do_POST(self) -> None:
-        path = urlparse(self.path).path
-        if not path.startswith("/api/"):
-            self._send_json(404, {"ok": False, "error": "Route not found."})
-            return
-        if not self._origin_allowed():
-            self._send_json(403, {"ok": False, "error": "Origin not allowed. Check FRONTEND_ORIGIN."})
-            return
+    def do_OPTIONS(self):
+        self.send_response(204)
 
-        try:
-            data = self._read_json()
-        except ValueError as exc:
-            self._send_json(400, {"ok": False, "error": str(exc)})
-            return
-
-        if path == "/api/register":
-            username = str(data.get("username", "")).strip()
-            email = str(data.get("email", "")).strip().lower() or None
-            password = str(data.get("password", ""))
-            if len(username) < 3 or len(username) > 40:
-                self._send_json(400, {"ok": False, "error": "Username must be 3–40 characters."})
-                return
-            if not password or len(password) < 8:
-                self._send_json(400, {"ok": False, "error": "Password must be at least 8 characters."})
-                return
-            if email and ("@" not in email or len(email) > 254):
-                self._send_json(400, {"ok": False, "error": "Enter a valid email address."})
-                return
-            salt, digest = hash_password(password)
-            now = time.time()
-            try:
-                with connect_db() as db:
-                    db.execute(
-                        """INSERT INTO users(username, email, password_salt, password_hash, role, created_at)
-                           VALUES(?, ?, ?, ?, 'customer', ?)""",
-                        (username, email, salt, digest, now),
-                    )
-                    db.execute(
-                        "INSERT OR IGNORE INTO user_state(username, state_json, updated_at) VALUES(?, '{}', ?)",
-                        (username, now),
-                    )
-                    db.commit()
-            except sqlite3.IntegrityError:
-                self._send_json(409, {"ok": False, "error": "That username or email is already registered."})
-                return
-            token = create_session(username)
-            export_excel()
-            self._send_json(
-                201,
-                {"ok": True, "user": {"username": username, "email": email, "role": "customer"}},
-                {"Set-Cookie": self._set_session_cookie(token)},
+        if FRONTEND_ORIGIN:
+            self.send_header(
+                "Access-Control-Allow-Origin",
+                FRONTEND_ORIGIN
             )
+            self.send_header(
+                "Access-Control-Allow-Credentials",
+                "true"
+            )
+            self.send_header(
+                "Access-Control-Allow-Methods",
+                "GET, POST, OPTIONS"
+            )
+            self.send_header(
+                "Access-Control-Allow-Headers",
+                "Content-Type"
+            )
+            self.send_header("Vary", "Origin")
+
+        self.end_headers()
+
+    def body_json(self):
+        length = int(self.headers.get("Content-Length", "0"))
+
+        if length < 1 or length > 2000000:
+            raise ValueError("Invalid request size")
+
+        return json.loads(self.rfile.read(length))
+
+    def cookie_token(self):
+        for item in self.headers.get("Cookie", "").split(";"):
+            name, sep, value = item.strip().partition("=")
+
+            if sep and name == "infinix_session":
+                return value
+
+        return ""
+
+    def current_user(self):
+        return get_user(self.cookie_token())
+
+    def do_GET(self):
+        path = urlsplit(self.path).path
+
+        if path == "/api/health":
+            self.send_json(200, {"ok": True})
             return
 
-        if path == "/api/login":
-            username = str(
-            data.get("identifier")
-            or data.get("username")
-            or data.get("email")
-            or ""
-            ).strip()
-            password = str(data.get("password", ""))
-            if not username or not password:
-                self._send_json(400, {"ok": False, "error": "Enter your username/email and password."})
-                return
-
-            # The admin credentials are server-side only; never send the password to the browser.
-            if (
-                ADMIN_PASSWORD
-                and username.casefold() == ADMIN_USERNAME.casefold()
-                and hmac.compare_digest(password, ADMIN_PASSWORD)
-            ):
-                with connect_db() as db:
-                    row = db.execute("SELECT * FROM users WHERE username = ? COLLATE NOCASE", (ADMIN_USERNAME,)).fetchone()
-                    if row is None:
-                        salt, digest = hash_password(ADMIN_PASSWORD)
-                        db.execute(
-                            """INSERT INTO users(username, email, password_salt, password_hash, role, created_at)
-                               VALUES(?, NULL, ?, ?, 'admin', ?)""",
-                            (ADMIN_USERNAME, salt, digest, time.time()),
-                        )
-                        db.commit()
-                token = create_session(ADMIN_USERNAME)
-                with connect_db() as db:
-                    row = db.execute("SELECT * FROM users WHERE username = ? COLLATE NOCASE", (ADMIN_USERNAME,)).fetchone()
-                    if row and row["role"] != "admin":
-                        db.execute("UPDATE users SET role='admin' WHERE username = ? COLLATE NOCASE", (ADMIN_USERNAME,))
-                        db.commit()
-                export_excel()
-                self._send_json(
-                    200,
-                    {"ok": True, "user": {"username": ADMIN_USERNAME, "email": None, "role": "admin"}},
-                    {"Set-Cookie": self._set_session_cookie(token)},
-                )
-                return
-
-            with connect_db() as db:
-                row = db.execute(
-                    "SELECT * FROM users WHERE username = ? COLLATE NOCASE OR email = ? COLLATE NOCASE LIMIT 1",
-                    (username, username),
-                ).fetchone()
-            if row is None or not password_matches(password, row["password_salt"], row["password_hash"]):
-                self._send_json(401, {"ok": False, "error": "Incorrect username/email or password."})
-                return
-            token = create_session(row["username"])
-            self._send_json(
+        if path == "/api/session":
+            self.send_json(
                 200,
-                {"ok": True, "user": safe_user(row)},
-                {"Set-Cookie": self._set_session_cookie(token)},
+                {"user": self.current_user()}
             )
-            return
-
-        if path == "/api/logout":
-            delete_session(self)
-            self._send_json(200, {"ok": True, "message": "Signed out."}, {"Set-Cookie": self._clear_session_cookie()})
             return
 
         if path == "/api/state":
-            user = current_user(self)
-            # Preserve storefront state support; optionally require login for user-specific state.
-            state = data.get("state", data.get("appState", {}))
-            if not isinstance(state, dict):
-                self._send_json(400, {"ok": False, "error": "State must be a JSON object."})
-                return
-            now = time.time()
-            with connect_db() as db:
-                db.execute(
-                    "INSERT INTO app_state(state_key, state_json, updated_at) VALUES('main', ?, ?) "
-                    "ON CONFLICT(state_key) DO UPDATE SET state_json=excluded.state_json, updated_at=excluded.updated_at",
-                    (json.dumps(state, ensure_ascii=False), now),
+            self.send_json(
+                200,
+                get_visible_state(self.current_user())
+            )
+            return
+
+        self.send_json(404, {"error": "Not found"})
+
+    def do_POST(self):
+        path = urlsplit(self.path).path
+
+        try:
+            data = self.body_json()
+
+            if not isinstance(data, dict):
+                raise ValueError("Invalid request")
+
+            if path == "/api/register":
+                username = str(data.get("username", "")).strip()
+                email = str(data.get("email", "")).strip().lower()
+                name = str(data.get("name", "")).strip()
+                password = str(data.get("password", ""))
+                role = str(data.get("role", ""))
+
+                if not 3 <= len(username) <= 32:
+                    raise ValueError("Invalid username")
+
+                if not username.replace("_", "").isalnum():
+                    raise ValueError("Invalid username")
+
+                if "@" not in email or len(email) > 254:
+                    raise ValueError("Enter a valid email")
+
+                if not name or len(name) > 100:
+                    raise ValueError("Enter a valid name")
+
+                if len(password) < 8 or len(password) > 200:
+                    raise ValueError("Password must be at least 8 characters")
+
+                if role not in ("customer", "shopkeeper"):
+                    raise ValueError("Invalid account type")
+
+                if username.casefold() == ADMIN_USERNAME.casefold():
+                    raise ValueError("Username reserved")
+
+                salt, digest = password_digest(password)
+
+                with connect_db() as conn:
+                    cur = conn.execute("""
+                        INSERT INTO users
+                        (username,email,name,role,salt,password_hash,created_at)
+                        VALUES(?,?,?,?,?,?,?)
+                    """, (
+                        username,
+                        email,
+                        name,
+                        role,
+                        salt,
+                        digest,
+                        now_iso()
+                    ))
+
+                    uid = cur.lastrowid
+
+                token = issue_session(uid)
+
+                export_excel()
+
+                self.send_json(
+                    201,
+                    {"user": self.get_user_for_token(token)},
+                    cookie=token
                 )
-                user_state = data.get("userState")
-                if user and isinstance(user_state, dict):
-                    db.execute(
-                        "INSERT INTO user_state(username, state_json, updated_at) VALUES(?, ?, ?) "
-                        "ON CONFLICT(username) DO UPDATE SET state_json=excluded.state_json, updated_at=excluded.updated_at",
-                        (user["username"], json.dumps(user_state, ensure_ascii=False), now),
+                return
+
+            if path == "/api/login":
+                identifier = str(data.get("identifier", "")).strip()
+                password = str(data.get("password", ""))
+
+                if not identifier or not password:
+                    raise ValueError("Enter your login details")
+
+                with connect_db() as conn:
+                    row = conn.execute("""
+                        SELECT * FROM users
+                        WHERE username=? COLLATE NOCASE
+                        OR email=? COLLATE NOCASE
+                    """, (identifier, identifier)).fetchone()
+
+                if not row or not verify_password(
+                    password,
+                    row["salt"],
+                    row["password_hash"]
+                ):
+                    self.send_json(
+                        401,
+                        {"error": "Invalid username or password"}
                     )
-                db.commit()
-            export_excel()
-            self._send_json(200, {"ok": True, "state": state})
-            return
+                    return
 
-        if path == "/api/users/delete":
-            user = current_user(self)
-            if not user or user["role"] != "admin":
-                self._send_json(403, {"ok": False, "error": "Administrator access required."})
+                token = issue_session(row["id"])
+
+                self.send_json(
+                    200,
+                    {"user": self.get_user_for_token(token)},
+                    cookie=token
+                )
                 return
-            target = str(data.get("username", "")).strip()
-            if not target or target.casefold() == ADMIN_USERNAME.casefold():
-                self._send_json(400, {"ok": False, "error": "A valid non-admin username is required."})
+
+            if path == "/api/logout":
+                token = self.cookie_token()
+
+                with connect_db() as conn:
+                    conn.execute(
+                        "DELETE FROM sessions WHERE token_hash=?",
+                        (token_digest(token),)
+                    )
+
+                self.send_json(
+                    200,
+                    {"ok": True},
+                    clear=True
+                )
                 return
-            with connect_db() as db:
-                db.execute("DELETE FROM users WHERE username = ? COLLATE NOCASE", (target,))
-                db.execute("DELETE FROM user_state WHERE username = ? COLLATE NOCASE", (target,))
-                db.commit()
-            export_excel()
-            self._send_json(200, {"ok": True})
-            return
 
-        self._send_json(404, {"ok": False, "error": "API route not found."})
+            if path == "/api/state":
+                user = self.current_user()
+
+                if not user:
+                    self.send_json(401, {"error": "Sign in required"})
+                    return
+
+                save_state(data, user)
+                export_excel()
+
+                self.send_json(200, {"saved": True})
+                return
+
+            if path == "/api/users/delete":
+                user = self.current_user()
+
+                if not user or user["role"] != "admin":
+                    self.send_json(
+                        403,
+                        {"error": "Administrator access required"}
+                    )
+                    return
+
+                username = str(data.get("username", "")).strip()
+
+                with connect_db() as conn:
+                    target = conn.execute("""
+                        SELECT id,role FROM users
+                        WHERE username=? COLLATE NOCASE
+                    """, (username,)).fetchone()
+
+                    if not target or target["role"] == "admin":
+                        self.send_json(404, {"error": "User not found"})
+                        return
+
+                    conn.execute(
+                        "DELETE FROM sessions WHERE user_id=?",
+                        (target["id"],)
+                    )
+
+                    conn.execute(
+                        "DELETE FROM user_state WHERE user_id=?",
+                        (target["id"],)
+                    )
+
+                    conn.execute(
+                        "DELETE FROM users WHERE id=?",
+                        (target["id"],)
+                    )
+
+                export_excel()
+                self.send_json(200, {"deleted": True})
+                return
+
+            self.send_json(404, {"error": "Not found"})
+
+        except sqlite3.IntegrityError:
+            self.send_json(
+                409,
+                {"error": "Username or email already exists"}
+            )
+
+        except (ValueError, json.JSONDecodeError) as error:
+            self.send_json(400, {"error": str(error)})
+
+        except Exception as error:
+            print("SERVER ERROR:", repr(error))
+            self.send_json(
+                500,
+                {"error": "Server could not complete the request"}
+            )
+
+    def get_user_for_token(self, token):
+        return get_user(token)
 
 
-def main() -> None:
-    ensure_configuration()
-    init_db()
-    try:
-        export_excel()
-    except Exception as exc:
-        print(f"Excel export warning: {exc}")
-    server = ThreadingHTTPServer(("0.0.0.0", PORT), ShopHandler)
-    print(f"Infinix Shopee backend listening on 0.0.0.0:{PORT}")
-    print(f"Database: {DB_PATH}")
-    print(f"Excel export: {EXCEL_PATH}")
-    print(f"Allowed frontend origin: {FRONTEND_ORIGIN}")
-    server.serve_forever()
-
+# ==========================================
+# START SERVER
+# ==========================================
 
 if __name__ == "__main__":
-    main()
+
+    if len(SESSION_SECRET) < 32:
+        if os.environ.get("RENDER"):
+            raise RuntimeError(
+                "Set SESSION_SECRET in Render environment variables"
+            )
+
+        SESSION_SECRET = secrets.token_urlsafe(48)
+
+    connect_db().close()
+    create_admin()
+    export_excel()
+
+    print("====================================")
+    print("INFINIX SHOPEE BACKEND STARTED")
+    print("Database:", DB_FILE)
+    print("Excel:", EXCEL_FILE)
+    print("Port:", PORT)
+    print("====================================")
+
+    server = ThreadingHTTPServer(
+        ("0.0.0.0", PORT),
+        ShopHandler
+    )
+
+    server.serve_forever()
